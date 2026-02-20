@@ -241,6 +241,7 @@ function loadSaved() {
       selectedBezirk = b;
       document.getElementById('bezirkSelect').value = b;
       document.getElementById('savedBezirkVal').textContent = `${b}. Bezirk`;
+      // Highlight wird nach Bezirksgrenzen-Load gemacht (in loadBezirksgrenzen)
     }
     const pos = localStorage.getItem(STORAGE_KEYS.LAST_POS);
     if (pos) {
@@ -339,21 +340,130 @@ function sendNotification(title, body) {
 // ═══════════════════════════════════════════════════
 let map, userMarker;
 let selectedBezirk = null;
+let bezirkLayer = null;    // Bezirksgrenzen GeoJSON
+let highlightLayer = null; // Hervorgehobener Bezirk
+let zoneLayer = null;      // Pickerlzonen des gewählten Bezirks
+let allBezirke = null;     // Gecachte Bezirksdaten
+
+// Bezirkszentren für Zoom
+const BEZIRK_CENTERS = {
+  1:[48.2085,16.3725], 2:[48.2150,16.3950], 3:[48.1980,16.3980],
+  4:[48.1920,16.3660], 5:[48.1880,16.3560], 6:[48.1970,16.3490],
+  7:[48.2020,16.3480], 8:[48.2090,16.3510], 9:[48.2220,16.3570],
+  10:[48.1620,16.3820], 11:[48.1730,16.4280], 12:[48.1720,16.3370],
+  13:[48.1780,16.2980], 14:[48.2050,16.3050], 15:[48.1970,16.3270],
+  16:[48.2120,16.3120], 17:[48.2270,16.3180], 18:[48.2330,16.3380],
+  19:[48.2500,16.3600], 20:[48.2280,16.3750], 21:[48.2670,16.4020],
+  22:[48.2270,16.4650], 23:[48.1480,16.2980]
+};
 
 function initMap() {
   map = L.map('map', { center: [48.2082, 16.3738], zoom: 12, zoomControl: true });
   L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
     attribution: '© OpenStreetMap, © CARTO', subdomains: 'abcd', maxZoom: 19
   }).addTo(map);
+
+  // WMS Kurzparkzonen (alle, gedimmt im Hintergrund)
   L.tileLayer.wms('https://data.wien.gv.at/daten/geo', {
     layers: 'ogdwien:KURZPARKZONEOGD',
-    format: 'image/png', transparent: true, opacity: 0.4
+    format: 'image/png', transparent: true, opacity: 0.2
   }).addTo(map);
+
   map.on('click', e => {
     placeMarker(e.latlng.lat, e.latlng.lng, null);
     savePos(e.latlng.lat, e.latlng.lng);
     checkPoint(e.latlng.lat, e.latlng.lng);
   });
+
+  // Bezirksgrenzen laden (klein, ~50KB, einmalig)
+  loadBezirksgrenzen();
+}
+
+async function loadBezirksgrenzen() {
+  const url = 'https://data.wien.gv.at/daten/geo?service=WFS&request=GetFeature&version=1.1.0&outputFormat=application/json&srsName=EPSG:4326&typeName=ogdwien:BEZIRKSGRENZEOGD';
+  const proxies = [
+    u => `https://corsproxy.io/?url=${encodeURIComponent(u)}`,
+    u => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`,
+    u => `https://thingproxy.freeboard.io/fetch/${u}`,
+  ];
+  for (const proxy of proxies) {
+    try {
+      const res = await fetch(proxy(url));
+      if (!res.ok) throw new Error();
+      const data = await res.json();
+      if (!data.features) throw new Error();
+      allBezirke = data;
+      // Alle Bezirksgrenzen dünn anzeigen
+      bezirkLayer = L.geoJSON(data, {
+        style: { color: '#4a9eff', weight: 1, fillOpacity: 0, opacity: 0.4 }
+      }).addTo(map);
+      console.log('Bezirksgrenzen geladen:', data.features.length);
+      // Falls Bezirk schon gewählt, sofort highlighten
+      if (selectedBezirk) highlightBezirk(selectedBezirk);
+      break;
+    } catch(e) { console.warn('Bezirksgrenzen Proxy fehlgeschlagen'); }
+  }
+}
+
+function highlightBezirk(bez) {
+  if (!allBezirke) return;
+  // Alten Highlight entfernen
+  if (highlightLayer) { map.removeLayer(highlightLayer); highlightLayer = null; }
+  if (zoneLayer) { map.removeLayer(zoneLayer); zoneLayer = null; }
+
+  // Bezirk-Feature finden (verschiedene mögliche Property-Namen)
+  const feature = allBezirke.features.find(f => {
+    const p = f.properties;
+    const b = p.BEZNR ?? p.BEZ ?? p.BEZIRK ?? p.beznr ?? p.bez;
+    return parseInt(b) === parseInt(bez);
+  });
+
+  if (!feature) { console.warn('Bezirk nicht gefunden:', bez); return; }
+
+  // Hervorheben: gelb mit Füllung
+  highlightLayer = L.geoJSON(feature, {
+    style: {
+      color: '#f0c844', weight: 3,
+      fillColor: '#f0c844', fillOpacity: 0.12,
+      opacity: 0.9
+    }
+  }).addTo(map);
+
+  // Zoom auf Bezirk
+  map.fitBounds(highlightLayer.getBounds(), { padding: [30, 30] });
+
+  // Pickerlzonen NUR für diesen Bezirk laden & grün einfärben
+  loadZonesForBezirk(bez, feature);
+}
+
+async function loadZonesForBezirk(bez, bezFeature) {
+  // BBox des Bezirks berechnen
+  const bounds = L.geoJSON(bezFeature).getBounds();
+  const bbox = `${bounds.getWest()},${bounds.getSouth()},${bounds.getEast()},${bounds.getNorth()},EPSG:4326`;
+  const url = `https://data.wien.gv.at/daten/geo?service=WFS&request=GetFeature&version=1.1.0&outputFormat=application/json&srsName=EPSG:4326&typeName=ogdwien:PARKENBERECHTOGD&BBOX=${bbox}`;
+  const proxies = [
+    u => `https://corsproxy.io/?url=${encodeURIComponent(u)}`,
+    u => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`,
+    u => `https://thingproxy.freeboard.io/fetch/${u}`,
+  ];
+  for (const proxy of proxies) {
+    try {
+      const res = await fetch(proxy(url));
+      if (!res.ok) throw new Error();
+      const data = await res.json();
+      if (!data.features) throw new Error();
+      if (zoneLayer) map.removeLayer(zoneLayer);
+      zoneLayer = L.geoJSON(data, {
+        style: {
+          color: '#3ddc84', weight: 1.5,
+          fillColor: '#3ddc84', fillOpacity: 0.25,
+          opacity: 0.8
+        }
+      }).addTo(map);
+      console.log(`Zonen für Bezirk ${bez}:`, data.features.length);
+      break;
+    } catch(e) { console.warn('Zonen laden fehlgeschlagen'); }
+  }
 }
 
 function placeMarker(lat, lng, acc) {
@@ -522,7 +632,12 @@ function onBezirkChange() {
   if (selectedBezirk) {
     try { localStorage.setItem(STORAGE_KEYS.BEZIRK, selectedBezirk); } catch(e) {}
     document.getElementById('savedBezirkVal').textContent = `${selectedBezirk}. Bezirk`;
-    showToast(`${selectedBezirk}. Bezirk gespeichert`, 'success');
+    showToast(`${selectedBezirk}. Bezirk wird hervorgehoben…`, 'info');
+    highlightBezirk(selectedBezirk);
+  } else {
+    // Bezirk abgewählt – Highlights entfernen
+    if (highlightLayer) { map.removeLayer(highlightLayer); highlightLayer = null; }
+    if (zoneLayer) { map.removeLayer(zoneLayer); zoneLayer = null; }
   }
 }
 
