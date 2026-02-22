@@ -440,7 +440,7 @@ async function checkPoint(lat,lng){
   const hasBez=inZone.some(f=>Object.keys(f.properties).some(k=>/bez/i.test(k)));
   if(!hasBez){showResult('inside','🅿️','Zone vorhanden','Kurzparkzone – Bezirk nicht im Datensatz');haptic('medium');return;}
   const match=inZone.filter(f=>Object.keys(f.properties).some(k=>/bez/i.test(k)&&parseInt(f.properties[k])===parseInt(selectedBezirk)));
-  if(match.length){showResult('inside',' <img src="check_icon_32.png" width="32" height="32">','Pickerlzone gültig!',`Dein ${selectedBezirk}. Bezirk Pickerlzone gilt hier`);haptic('success');sendNotif('<img src="check_icon_32.png" width="32" height="32"> Gültig!',`${selectedBezirk}. Bezirk Pickerl gilt hier.`);}
+  if(match.length){showResult('inside',' <img src="check32.png" width="32" height="32">','Pickerlzone gültig!',`Dein ${selectedBezirk}. Bezirk Pickerlzone gilt hier`);haptic('success');sendNotif('<img src="check32.png" width="32" height="32"> Gültig!',`${selectedBezirk}. Bezirk Pickerl gilt hier.`);}
   else{const o=getBez(inZone[0]);showResult('outside','❌','Andere Pickerlzone',o?`Zone des ${o}. Bezirks`:'Andere Pickerlzone');haptic('error');sendNotif('❌ Falsche Zone',o?`Zone ${o}. Bezirk`:'Andere Zone');}
 }
 
