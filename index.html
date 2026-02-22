@@ -334,7 +334,7 @@ let BEZIRKE_GEO = null;
 function initMap(){
   map=L.map('map',{center:[48.2082,16.3738],zoom:12,zoomControl:false});
   L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',{attribution:'© OpenStreetMap, © CARTO',subdomains:'abcd',maxZoom:19}).addTo(map);
-  L.control.zoom({position:'topleft'}).addTo(map);
+  L.control.zoom({position:'bottomleft'}).addTo(map);
   map.on('tileerror',()=>{if(!navigator.onLine)document.getElementById('mapOffline').classList.add('visible');});
   loadRealBezirksgrenzen();
 }
