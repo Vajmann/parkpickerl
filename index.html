@@ -26,7 +26,7 @@
 :root{
   --bg:#0f0f0f;--surface:#1a1a1a;--surface2:#242424;--border:#2e2e2e;
   --text:#f5f5f5;--muted:#888;
-  --accent:#E2001A;--accent2:#ff1f35;--accent-glow:rgba(226,0,26,.4);
+  --accent:#007AFF;--accent2:#ff1f35;--accent-glow:rgba(226,0,26,.4);
   --green:#3ddc84;--red:#ff5f5f;--blue:#4a9eff;
   --font-d:'Syne',sans-serif;--font-m:'DM Mono',monospace;
   --safe-top:env(safe-area-inset-top,0px);--safe-bot:env(safe-area-inset-bottom,0px);
@@ -37,7 +37,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--f
 /* Header */
 header{display:flex;align-items:center;justify-content:space-between;padding:10px 16px;background:linear-gradient(135deg,#1a0003,#1a1a1a);border-bottom:1px solid rgba(226,0,26,.2);gap:10px;flex-shrink:0;box-shadow:0 2px 20px rgba(226,0,26,.1)}
 .logo{display:flex;align-items:center;gap:12px}
-.logo-icon{width:38px;height:38px;background:linear-gradient(145deg,#E2001A,#a80012);border-radius:10px;display:flex;align-items:center;justify-content:center;box-shadow:0 3px 16px rgba(226,0,26,.5),inset 0 1px 0 rgba(255,255,255,.15);flex-shrink:0}
+.logo-icon{width:38px;height:38px;background:linear-gradient(145deg,#007AFF,#a80012);border-radius:10px;display:flex;align-items:center;justify-content:center;box-shadow:0 3px 16px rgba(226,0,26,.5),inset 0 1px 0 rgba(255,255,255,.15);flex-shrink:0}
 .logo-icon svg{width:22px;height:22px;fill:white}
 .logo-text h1{font-size:17px;font-weight:800;letter-spacing:-.5px;color:#fff}
 .logo-text span{font-size:10px;color:rgba(226,0,26,.9);font-family:var(--font-m);letter-spacing:.5px;text-transform:uppercase}
@@ -96,7 +96,7 @@ header{display:flex;align-items:center;justify-content:space-between;padding:10p
 /* Onboarding */
 #onboarding{position:fixed;inset:0;z-index:2000;background:linear-gradient(160deg,#150002 0%,#0f0f0f 60%);display:flex;flex-direction:column;padding:calc(var(--safe-top) + 40px) 24px calc(var(--safe-bot) + 24px);transition:opacity .4s,transform .4s}
 #onboarding.hidden{opacity:0;transform:scale(.96);pointer-events:none}
-.ob-logo{width:80px;height:80px;background:linear-gradient(145deg,#ff1f35,#E2001A,#a80012);border-radius:22px;display:flex;align-items:center;justify-content:center;margin-bottom:28px;box-shadow:0 12px 40px rgba(226,0,26,.55),inset 0 1px 0 rgba(255,255,255,.2)}
+.ob-logo{width:80px;height:80px;background:linear-gradient(145deg,#ff1f35,#007AFF,#a80012);border-radius:22px;display:flex;align-items:center;justify-content:center;margin-bottom:28px;box-shadow:0 12px 40px rgba(226,0,26,.55),inset 0 1px 0 rgba(255,255,255,.2)}
 .ob-logo-p{font-size:42px;font-weight:800;color:#fff;font-family:var(--font-d);line-height:1;letter-spacing:-2px;text-shadow:0 2px 8px rgba(0,0,0,.3)}
 .ob-title{font-size:30px;font-weight:800;letter-spacing:-1px;margin-bottom:8px;line-height:1.2;color:#fff}
 .ob-title span{color:var(--accent)}
@@ -108,7 +108,7 @@ header{display:flex;align-items:center;justify-content:space-between;padding:10p
 .bez-option:active{transform:scale(.95)}
 .bez-option.selected{border-color:var(--accent);background:rgba(226,0,26,.18);color:#ff8090}
 .bez-nr{font-size:18px;font-weight:800;display:block;margin-bottom:2px}
-.ob-continue{margin-top:16px;background:linear-gradient(135deg,#ff1f35,#E2001A);color:#fff;border:none;border-radius:14px;padding:16px;font-family:var(--font-d);font-weight:800;font-size:16px;cursor:pointer;width:100%;flex-shrink:0;opacity:.4;pointer-events:none;transition:opacity .2s;box-shadow:0 4px 20px rgba(226,0,26,.4)}
+.ob-continue{margin-top:16px;background:linear-gradient(135deg,#ff1f35,#007AFF);color:#fff;border:none;border-radius:14px;padding:16px;font-family:var(--font-d);font-weight:800;font-size:16px;cursor:pointer;width:100%;flex-shrink:0;opacity:.4;pointer-events:none;transition:opacity .2s;box-shadow:0 4px 20px rgba(226,0,26,.4)}
 .ob-continue.active{opacity:1;pointer-events:auto}
 
 /* Bottom Sheets */
@@ -139,7 +139,7 @@ header{display:flex;align-items:center;justify-content:space-between;padding:10p
 #installBanner.visible{display:flex}
 #installBanner p{flex:1;font-size:12px;font-family:var(--font-m)}
 #installBanner strong{color:var(--accent)}
-.btn-install{background:linear-gradient(135deg,#ff1f35,#E2001A);color:#fff;border:none;border-radius:8px;padding:7px 14px;font-weight:700;font-size:12px;cursor:pointer;font-family:var(--font-d)}
+.btn-install{background:linear-gradient(135deg,#ff1f35,#007AFF);color:#fff;border:none;border-radius:8px;padding:7px 14px;font-weight:700;font-size:12px;cursor:pointer;font-family:var(--font-d)}
 .btn-dismiss{background:none;border:none;color:var(--muted);font-size:18px;cursor:pointer}
 
 /* Light Mode */
@@ -233,7 +233,7 @@ header{display:flex;align-items:center;justify-content:space-between;padding:10p
   <div class="info-row"><span class="key">Mein Bezirk</span><span class="val" id="savedBezirkVal">—</span></div>
   <div class="info-row"><span class="key">Benachrichtigungen</span><span class="val" id="notifStatusVal">—</span></div>
   <div class="info-row" style="gap:10px;flex-wrap:wrap;padding-top:4px">
-    <button class="sheet-btn" onclick="requestNotifications()" style="background:linear-gradient(135deg,#ff1f35,#E2001A);color:#fff;flex:1">🔔 Benachrichtigungen</button>
+    <button class="sheet-btn" onclick="requestNotifications()" style="background:linear-gradient(135deg,#ff1f35,#007AFF);color:#fff;flex:1">🔔 Benachrichtigungen</button>
     <button class="sheet-btn" onclick="clearSavedPos()" style="background:var(--surface2);color:var(--red);border:1px solid var(--border);flex:1">🗑 Cache löschen</button>
   </div>
   <div style="padding:16px 0 4px;font-size:10px;color:var(--muted);font-family:var(--font-m)">Version 4.1 – Wien-Rot & Weiß Theme · OGD Wien · data.wien.gv.at</div>
