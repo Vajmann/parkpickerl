@@ -515,7 +515,7 @@ function haptic(t){if(!('vibrate'in navigator))return;({light:[10],medium:[20],s
 function showResult(cls,icon,title,sub){
   const c=document.getElementById('resultCard');
   c.className='visible'+(cls?' '+cls:'');
-  document.getElementById('resultIcon').textContent=icon;
+  document.getElementById('resultIcon').innerHTML=icon;
   document.getElementById('resultTitle').textContent=title;
   document.getElementById('resultSub').textContent=sub;
 }
