@@ -1,6 +1,6 @@
 {
-  "name": "Parkpickerl Checker Wien",
-  "short_name": "Parkpickerl",
+  "name": "Parkptracker Checker Wien",
+  "short_name": "Parktracker",
   "description": "Prüfe ob dein Parkpickerl an diesem Ort gilt",
   "start_url": "/",
   "display": "standalone",
