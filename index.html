@@ -407,6 +407,20 @@ zoneLayer=L.geoJSON(d,{style:{color:'#ff5f5f',weight:2,fillColor:'#ff5f5f',fillO
 break;
 }catch(e){}
 }
+  // Anrainerparkplätze – blaue Punkte
+  const urlA=`${WFS}&typeName=ogdwien:ANRAINERINNENPARKPLATZOGD&BBOX=${bbox}`;
+  for(const p of PROXIES){
+    try{
+      const r=await fetch(p(urlA));if(!r.ok)throw 0;
+      const d=await r.json();if(!d.features)throw 0;
+      L.geoJSON(d,{
+        pointToLayer:(f,latlng)=>L.circleMarker(latlng,{
+          radius:6,color:'#007AFF',fillColor:'#007AFF',fillOpacity:.9,weight:2
+        })
+      }).addTo(map);
+      break;
+    }catch(e){}
+  }
 }
 
 function placeMarker(lat,lng,acc){
