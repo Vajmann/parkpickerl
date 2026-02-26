@@ -461,151 +461,123 @@ function parseCSVLine(line){
   return result;
 }
 
-// ── Baustellen: OGD Wien – alle Wien laden, im Browser nach Bezirk filtern ──
+// ── Baustellen: OGD Wien via GeoRSS (kein CORS-Problem, kein Login) ──
 async function loadBaustellen(bez){
   if(baustellenLayer){map.removeLayer(baustellenLayer);baustellenLayer=null;}
   document.getElementById('baustellenVal').textContent='lädt…';
   baustellenLayer=L.layerGroup();
   let totalCount=0;
 
+  // BBOX ganz Wien – GeoRSS gibt nur aktuelle Baustellen zurück (kleiner Datensatz)
+  const WIEN_BBOX='48.10,16.16,48.34,16.59';
+
   const datasets=[
-    {typeName:'ogdwien:BAUSTELLENLINIEOGD', type:'line',  label:'Sperre'},
-    {typeName:'ogdwien:BAUSTELLENPKTOGD',   type:'point', label:'Baustelle'},
+    {layer:'ogdwien:BAUSTELLENPKTOGD',   type:'point', label:'Baustelle'},
+    {layer:'ogdwien:BAUSTELLENLINIEOGD', type:'line',  label:'Sperre'},
   ];
 
-  // Bezirks-BBOX für räumlichen Filter (BBOX-Filter ist zuverlässiger als CQL)
-  let bboxStr=null;
-  if(highlightLayer){
-    const b=highlightLayer.getBounds();
-    // WFS BBOX: minx,miny,maxx,maxy,EPSG:4326
-    bboxStr=`${b.getWest()},${b.getSouth()},${b.getEast()},${b.getNorth()},EPSG:4326`;
-  }
-
   for(const ds of datasets){
-    // Mit BBOX filtern wenn verfügbar, sonst ganz Wien
-    const baseUrl=`https://data.wien.gv.at/daten/geo?service=WFS&request=GetFeature`
-      +`&version=1.1.0&typeName=${ds.typeName}&srsName=EPSG:4326&outputFormat=csv`
-      +(bboxStr?`&BBOX=${bboxStr}`:'');
+    const rssUrl=`https://data.wien.gv.at/daten/geo?version=1.3.0&service=WMS&request=GetMap`
+      +`&crs=EPSG:4326&bbox=${WIEN_BBOX}&width=1&height=1`
+      +`&layers=${ds.layer}&styles=&format=application/rss%2Bxml`;
 
+    // GeoRSS hat CORS-Header – direkt abrufbar!
     const urls=[
-      baseUrl,
-      `https://corsproxy.io/?url=${encodeURIComponent(baseUrl)}`,
-      `https://api.allorigins.win/raw?url=${encodeURIComponent(baseUrl)}`,
-      `https://thingproxy.freeboard.io/fetch/${baseUrl}`,
+      rssUrl,
+      `https://corsproxy.io/?url=${encodeURIComponent(rssUrl)}`,
+      `https://api.allorigins.win/raw?url=${encodeURIComponent(rssUrl)}`,
     ];
 
     let loaded=false;
     for(let ui=0;ui<urls.length;ui++){
-      const urlLabel=ui===0?'direkt':`Proxy${ui}`;
       try{
-        showToast(`🔄 Baustellen ${ds.type} (${urlLabel})…`,'info');
         const ctrl=new AbortController();
-        const t=setTimeout(()=>ctrl.abort(),25000);
+        const t=setTimeout(()=>ctrl.abort(),20000);
         const res=await fetch(urls[ui],{signal:ctrl.signal});
         clearTimeout(t);
+        if(!res.ok)continue;
+        const xml=await res.text();
+        if(!xml||xml.length<50)continue;
+        if(!xml.includes('<item')&&!xml.includes('georss'))continue;
 
-        if(!res.ok){
-          console.warn(`[Baustellen] HTTP ${res.status} (${urlLabel})`);
-          continue;
-        }
-        const csv=await res.text();
-        console.log(`[Baustellen ${ds.type}] ${urlLabel}: ${csv.length} Zeichen empfangen`);
+        // XML parsen via DOMParser
+        const parser=new DOMParser();
+        const doc=parser.parseFromString(xml,'application/xml');
+        const items=doc.querySelectorAll('item');
 
-        if(!csv||csv.trim().length<10){
-          console.warn(`[Baustellen] Leere Antwort (${urlLabel})`);
-          continue;
-        }
-        // Prüfe ob XML-Fehler zurückkam statt CSV
-        if(csv.trim().startsWith('<')){
-          console.warn(`[Baustellen] XML/HTML statt CSV:`,csv.substring(0,200));
-          continue;
-        }
+        // Bezirks-BBOX für Filterung
+        let bBounds=null;
+        if(highlightLayer)bBounds=highlightLayer.getBounds();
 
-        const lines=csv.trim().split('\n');
-        console.log(`[Baustellen ${ds.type}] ${lines.length-1} Datensätze`);
-        if(lines.length<2){loaded=true;break;}
+        items.forEach(item=>{
+          const title=item.querySelector('title')?.textContent||'';
+          const desc =item.querySelector('description')?.textContent||'';
 
-        const header=parseCSVLine(lines[0]);
-        console.log(`[Baustellen] Spalten:`,header.join(', '));
-
-        const shapeIdx=header.indexOf('SHAPE');
-        // Flexible Spalten-Erkennung
-        const nameIdx =header.findIndex(h=>/^(BEZEICHNUNG|NAME|OBJEKT|TITEL|STRASSE|ADRESSE)$/i.test(h));
-        const vonIdx  =header.findIndex(h=>/^(VON_DAT|DATUM_VON|BEGINN|START_DAT|BEGINN_DAT)$/i.test(h));
-        const bisIdx  =header.findIndex(h=>/^(BIS_DAT|DATUM_BIS|ENDE|END_DAT|ENDE_DAT)$/i.test(h));
-        const infoIdx =header.findIndex(h=>/^(INFO|BESCHREIBUNG|ANMERKUNG|TEXT|MASSNAHME)$/i.test(h));
-        const bezIdx  =header.findIndex(h=>/^BEZIRK$/i.test(h));
-
-        if(shapeIdx<0){
-          console.warn(`[Baustellen] Keine SHAPE-Spalte in:`,header);
-          loaded=true;break;
-        }
-
-        let rowCount=0;
-        for(let i=1;i<lines.length;i++){
-          if(!lines[i].trim())continue;
-          const cols=parseCSVLine(lines[i]);
-
-          // Client-seitiger Bezirk-Filter wenn BEZIRK-Spalte vorhanden
-          if(bezIdx>=0&&cols[bezIdx]){
-            if(parseInt(cols[bezIdx])!==parseInt(bez))continue;
-          }
-
-          const shape=cols[shapeIdx]||'';
-          const name =nameIdx>=0 ?cols[nameIdx] :'';
-          const von  =vonIdx>=0  ?cols[vonIdx]  :'';
-          const bis  =bisIdx>=0  ?cols[bisIdx]  :'';
-          const info =infoIdx>=0 ?cols[infoIdx] :'';
+          // GeoRSS Koordinaten: <georss:point>, <georss:line>, <geo:lat>/<geo:long>
+          const ptEl  =item.querySelector('point')   // georss:point
+                     ||item.getElementsByTagNameNS('http://www.georss.org/georss','point')[0];
+          const lineEl=item.querySelector('line')    // georss:line
+                     ||item.getElementsByTagNameNS('http://www.georss.org/georss','line')[0];
+          const latEl =item.getElementsByTagNameNS('http://www.w3.org/2003/01/geo/wgs84_pos#','lat')[0]
+                     ||item.querySelector('lat');
+          const lngEl =item.getElementsByTagNameNS('http://www.w3.org/2003/01/geo/wgs84_pos#','long')[0]
+                     ||item.querySelector('long');
 
           const popup=`<b>🚧 ${ds.label}</b>`
-            +(name?`<br>📍 ${name}`:'')
-            +(von||bis?`<br>📅 ${von}${bis?' – '+bis:''}`:'')
-            +(info?`<br>ℹ️ ${info}`:'');
+            +(title?`<br>📍 ${title}`:'')
+            +(desc ?`<br>ℹ️ ${desc.replace(/<[^>]+>/g,' ').substring(0,200)}`:'');
 
-          if(ds.type==='line'){
-            const m=shape.match(/LINESTRING\s*\(([^)]+)\)/i);
-            if(!m)continue;
-            const coords=m[1].trim().split(',').map(p=>{
-              const[lng,lat]=p.trim().split(/\s+/).map(Number);
-              return[lat,lng];
+          if(ds.type==='point'&&ptEl){
+            const[lat,lng]=ptEl.textContent.trim().split(/\s+/).map(Number);
+            if(isNaN(lat)||isNaN(lng))return;
+            if(bBounds&&!bBounds.contains([lat,lng]))return;
+            const icon=L.divIcon({
+              html:'<div style="font-size:22px;filter:drop-shadow(0 1px 4px rgba(0,0,0,.6))">🚧</div>',
+              className:'',iconSize:[24,24],iconAnchor:[12,12]
             });
-            if(coords.length<2)continue;
+            L.marker([lat,lng],{icon}).bindPopup(popup).addTo(baustellenLayer);
+            totalCount++;
+          } else if(ds.type==='point'&&latEl&&lngEl){
+            const lat=parseFloat(latEl.textContent);
+            const lng=parseFloat(lngEl.textContent);
+            if(isNaN(lat)||isNaN(lng))return;
+            if(bBounds&&!bBounds.contains([lat,lng]))return;
+            const icon=L.divIcon({
+              html:'<div style="font-size:22px;filter:drop-shadow(0 1px 4px rgba(0,0,0,.6))">🚧</div>',
+              className:'',iconSize:[24,24],iconAnchor:[12,12]
+            });
+            L.marker([lat,lng],{icon}).bindPopup(popup).addTo(baustellenLayer);
+            totalCount++;
+          } else if(ds.type==='line'&&lineEl){
+            const nums=lineEl.textContent.trim().split(/\s+/).map(Number);
+            const coords=[];
+            for(let i=0;i<nums.length-1;i+=2)coords.push([nums[i],nums[i+1]]);
+            if(coords.length<2)return;
+            // Bezirk-Filter: zumindest ein Punkt im Bezirk
+            if(bBounds&&!coords.some(c=>bBounds.contains(c)))return;
             L.polyline(coords,{
               color:'#FF9500',weight:6,opacity:0.95,
               lineCap:'round',lineJoin:'round',dashArray:'10,5'
             }).bindPopup(popup).addTo(baustellenLayer);
-            rowCount++;totalCount++;
-          } else {
-            const m=shape.match(/POINT\s*\(([^)]+)\)/i);
-            if(!m)continue;
-            const[lng,lat]=m[1].trim().split(/\s+/).map(Number);
-            if(isNaN(lat)||isNaN(lng))continue;
-            const icon=L.divIcon({
-              html:'<div style="font-size:20px;filter:drop-shadow(0 1px 3px rgba(0,0,0,.5))">🚧</div>',
-              className:'',iconSize:[24,24],iconAnchor:[12,12]
-            });
-            L.marker([lat,lng],{icon}).bindPopup(popup).addTo(baustellenLayer);
-            rowCount++;totalCount++;
+            totalCount++;
           }
-        }
-        console.log(`[Baustellen ${ds.type}] ${rowCount} Features gezeichnet`);
+        });
+
+        console.log(`[Baustellen ${ds.type}] ${items.length} Items im Feed, ${totalCount} gezeichnet`);
         loaded=true;
         break;
-
       }catch(e){
-        console.warn(`[Baustellen ${ds.type}] ${urlLabel} Fehler:`,e.message);
+        console.warn(`[Baustellen ${ds.type}] URL${ui} Fehler:`,e.message);
       }
     }
-    if(!loaded){
-      console.error(`[Baustellen] ${ds.typeName} komplett fehlgeschlagen`);
-    }
+    if(!loaded)console.warn(`[Baustellen] ${ds.layer} nicht ladbar`);
   }
 
   baustellenLayer.addTo(map);
-  const status=totalCount>0?`${totalCount} aktiv (OGD Wien)`:'Keine/nicht ladbar';
+  const status=totalCount>0?`${totalCount} aktiv (OGD Wien)`:'Keine aktiven Baustellen';
   document.getElementById('baustellenVal').textContent=status;
-  if(totalCount>0)showToast(`🚧 ${totalCount} Baustellen/Sperren gefunden`,'info');
-  else showToast('ℹ️ Keine Baustellen im Bezirk (oder Daten nicht ladbar)','info');
+  if(totalCount>0)showToast(`🚧 ${totalCount} Baustellen/Sperren im Bezirk`,'info');
+  else showToast('✅ Keine aktiven Baustellen im Bezirk','success');
 }
 
 function placeMarker(lat,lng,acc){
