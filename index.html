@@ -1,4 +1,4 @@
-<!-- Version 4.6 – Ladezonen als blaue Linien via OGD Wien CSV -->
+<!-- Version 4.7 – Baustellen/Sperren via OGD Wien hinzugefügt -->
 <!DOCTYPE html>
 <html lang="de">
 <head>
@@ -66,7 +66,7 @@ header{display:flex;align-items:center;justify-content:space-between;padding:10p
 #mapOffline.visible{display:flex}
 #mapOffline span{font-size:42px}
 #mapOffline p{font-size:14px;color:var(--muted);font-family:var(--font-m);text-align:center}
-#legend{position:absolute;bottom:calc(16px + var(--safe-bot));left:16px;background:rgba(22,24,31,.88);backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:10px 14px;z-index:400;font-size:11px;font-family:var(--font-m);display:flex;flex-direction:column;gap:6px}
+#legend{position:absolute;bottom:calc(110px + var(--safe-bot));left:16px;background:rgba(22,24,31,.88);backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:10px 14px;z-index:400;font-size:11px;font-family:var(--font-m);display:flex;flex-direction:column;gap:6px}
 .legend-row{display:flex;align-items:center;gap:8px;color:var(--text)}
 .legend-dot{width:12px;height:12px;border-radius:50%;flex-shrink:0;border:2px solid rgba(255,255,255,.3)}
 .legend-line{width:20px;height:3px;border-radius:2px;flex-shrink:0}
@@ -111,7 +111,7 @@ header{display:flex;align-items:center;justify-content:space-between;padding:10p
 #installBanner strong{color:var(--accent)}
 .btn-install{background:linear-gradient(135deg,#ff1f35,#007AFF);color:#fff;border:none;border-radius:8px;padding:7px 14px;font-weight:700;font-size:12px;cursor:pointer;font-family:var(--font-d)}
 .btn-dismiss{background:none;border:none;color:var(--muted);font-size:18px;cursor:pointer}
-.leaflet-bottom.leaflet-left{bottom:90px;}
+.leaflet-bottom.leaflet-left{bottom:110px;}
 @media(prefers-color-scheme:light){
 :root{--bg:#F2F2F7;--surface:#fff;--surface2:#f0f0f2;--border:#e0e0e5;--text:#1a1a2e;--muted:#8888aa}
 #resultCard{background:rgba(255,255,255,.92)}
@@ -172,6 +172,7 @@ header{display:flex;align-items:center;justify-content:space-between;padding:10p
   <div id="legend">
     <div class="legend-row"><span class="legend-line" style="background:#ff5f5f"></span>Kurzparkzone</div>
     <div class="legend-row"><span class="legend-line" style="background:#007AFF"></span>Ladezone</div>
+    <div class="legend-row"><span class="legend-line" style="background:#FF9500"></span>Baustelle/Sperre</div>
     <div class="legend-row"><span class="legend-line" style="background:#f0c844"></span>Dein Bezirk</div>
   </div>
 
@@ -196,13 +197,14 @@ header{display:flex;align-items:center;justify-content:space-between;padding:10p
   <div class="info-row"><span class="key">Letzter Check</span><span class="val" id="lastCheckVal">—</span></div>
   <div class="info-row"><span class="key">API-Status</span><span class="val" id="apiStatusVal">—</span></div>
   <div class="info-row"><span class="key">Ladezonen geladen</span><span class="val" id="ladezonenVal">—</span></div>
+  <div class="info-row"><span class="key">Baustellen geladen</span><span class="val" id="baustellenVal">—</span></div>
   <div class="info-row"><span class="key">Mein Bezirk</span><span class="val" id="savedBezirkVal">—</span></div>
   <div class="info-row"><span class="key">Benachrichtigungen</span><span class="val" id="notifStatusVal">—</span></div>
   <div class="info-row" style="gap:10px;flex-wrap:wrap;padding-top:4px">
     <button class="sheet-btn" onclick="requestNotifications()" style="background:linear-gradient(135deg,#ff1f35,#007AFF);color:#fff;flex:1">🔔 Benachrichtigungen</button>
     <button class="sheet-btn" onclick="clearSavedPos()" style="background:var(--surface2);color:var(--red);border:1px solid var(--border);flex:1">🗑 Cache löschen</button>
   </div>
-  <div style="padding:16px 0 4px;font-size:10px;color:var(--muted);font-family:var(--font-m)">Version 4.6 – OGD Wien · Ladezonen offizielle Daten</div>
+  <div style="padding:16px 0 4px;font-size:10px;color:var(--muted);font-family:var(--font-m)">Version 4.7 – OGD Wien · Ladezonen & Baustellen</div>
 </div>
 
 <div class="toast" id="toast"></div>
@@ -225,7 +227,7 @@ const PROXIES=[
 ];
 const WFS='https://data.wien.gv.at/daten/geo?service=WFS&request=GetFeature&version=1.1.0&outputFormat=application/json&srsName=EPSG:4326';
 
-let map,userMarker,highlightLayer,zoneLayer,ladezonenLayer;
+let map,userMarker,highlightLayer,zoneLayer,ladezonenLayer,baustellenLayer;
 let selectedBezirk=null,activeSheet=null,swipeStartY=0;
 let watchId=null,lastLat=null,lastLng=null,followMode=true;
 
@@ -327,6 +329,7 @@ function highlightBezirk(bez){
   if(highlightLayer){map.removeLayer(highlightLayer);highlightLayer=null;}
   if(zoneLayer){map.removeLayer(zoneLayer);zoneLayer=null;}
   if(ladezonenLayer){map.removeLayer(ladezonenLayer);ladezonenLayer=null;}
+  if(baustellenLayer){map.removeLayer(baustellenLayer);baustellenLayer=null;}
   if(!BEZIRKE_GEO){showToast('Bezirksgrenzen laden…','info');return;}
   const f=BEZIRKE_GEO.features.find(f=>parseInt(f.properties.BEZNR)===parseInt(bez));
   if(!f){showToast(`Bezirk ${bez} nicht gefunden ⚠️`,'error');return;}
@@ -353,6 +356,9 @@ async function loadZones(bez,bezF){
 
   // ── Ladezonen – blaue Linien via OGD Wien CSV ──
   await loadLadezonen(bez);
+
+  // ── Baustellen – orange Linien + Punkte via OGD Wien CSV ──
+  await loadBaustellen(bez);
 }
 
 // ── Ladezonen: OGD Wien CSV → LINESTRING parsen → blaue Linien ──
@@ -453,6 +459,127 @@ function parseCSVLine(line){
   }
   result.push(cur.trim());
   return result;
+}
+
+// ── Baustellen: OGD Wien – Linien + Punkte, orange ──
+async function loadBaustellen(bez){
+  if(baustellenLayer){map.removeLayer(baustellenLayer);baustellenLayer=null;}
+  document.getElementById('baustellenVal').textContent='lädt…';
+  baustellenLayer=L.layerGroup();
+  let totalCount=0;
+
+  // Beide Datensätze laden: Linien (Sperren) + Punkte (Baustellen-Standorte)
+  const datasets=[
+    {
+      typeName:'ogdwien:BAUSTELLENLINIEOGD',
+      type:'line',
+      label:'Sperre'
+    },
+    {
+      typeName:'ogdwien:BAUSTELLENPKTOGD',
+      type:'point',
+      label:'Baustelle'
+    }
+  ];
+
+  for(const ds of datasets){
+    const csvUrl=`https://data.wien.gv.at/daten/geo?service=WFS&request=GetFeature&version=1.1.0`
+      +`&typeName=${ds.typeName}&srsName=EPSG:4326&outputFormat=csv`
+      +`&CQL_FILTER=BEZIRK=${parseInt(bez)}`;
+
+    const urls=[
+      csvUrl,
+      `https://corsproxy.io/?url=${encodeURIComponent(csvUrl)}`,
+      `https://api.allorigins.win/raw?url=${encodeURIComponent(csvUrl)}`,
+    ];
+
+    let loaded=false;
+    for(const url of urls){
+      try{
+        const ctrl=new AbortController();
+        const t=setTimeout(()=>ctrl.abort(),20000);
+        const res=await fetch(url,{signal:ctrl.signal});
+        clearTimeout(t);
+        if(!res.ok)continue;
+        const csv=await res.text();
+        if(!csv||csv.trim().length<10)continue;
+
+        const lines=csv.trim().split('\n');
+        if(lines.length<2){loaded=true;break;}
+
+        const header=parseCSVLine(lines[0]);
+        const shapeIdx=header.indexOf('SHAPE');
+        const nameIdx=header.findIndex(h=>/name|bezeich|titel|objekt/i.test(h));
+        const vonIdx=header.findIndex(h=>/von_dat|beginn|datum_von|start/i.test(h));
+        const bisIdx=header.findIndex(h=>/bis_dat|ende|datum_bis|end/i.test(h));
+        const infoIdx=header.findIndex(h=>/info|beschreib|text|anmerk/i.test(h));
+        if(shapeIdx<0){loaded=true;break;}
+
+        for(let i=1;i<lines.length;i++){
+          if(!lines[i].trim())continue;
+          const cols=parseCSVLine(lines[i]);
+          const shape=cols[shapeIdx]||'';
+
+          const name=nameIdx>=0?cols[nameIdx]:'';
+          const von=vonIdx>=0?cols[vonIdx]:'';
+          const bis=bisIdx>=0?cols[bisIdx]:'';
+          const info=infoIdx>=0?cols[infoIdx]:'';
+
+          const popup=`<b>🚧 ${ds.label}</b>`
+            +(name?`<br>📍 ${name}`:'')
+            +(von&&bis?`<br>📅 ${von} – ${bis}`:(von?`<br>📅 ab ${von}`:''))
+            +(info?`<br>ℹ️ ${info}`:'');
+
+          if(ds.type==='line'){
+            const m=shape.match(/LINESTRING\s*\(([^)]+)\)/i);
+            if(!m)continue;
+            const coords=m[1].trim().split(',').map(p=>{
+              const[lng,lat]=p.trim().split(/\s+/).map(Number);
+              return[lat,lng];
+            });
+            if(coords.length<2)continue;
+            const line=L.polyline(coords,{
+              color:'#FF9500',weight:5,opacity:0.9,
+              lineCap:'round',lineJoin:'round',
+              dashArray:'8,4'
+            });
+            line.bindPopup(popup);
+            baustellenLayer.addLayer(line);
+            totalCount++;
+          } else {
+            // POINT (lng lat)
+            const m=shape.match(/POINT\s*\(([^)]+)\)/i);
+            if(!m)continue;
+            const[lng,lat]=m[1].trim().split(/\s+/).map(Number);
+            if(isNaN(lat)||isNaN(lng))continue;
+            const marker=L.circleMarker([lat,lng],{
+              radius:9,color:'#fff',weight:2,
+              fillColor:'#FF9500',fillOpacity:1
+            });
+            // Baustellen-Icon als Div-Overlay
+            const icon=L.divIcon({
+              html:'<div style="font-size:16px;line-height:1;margin-top:-8px;margin-left:-8px">🚧</div>',
+              className:'',iconSize:[16,16]
+            });
+            const mk=L.marker([lat,lng],{icon});
+            mk.bindPopup(popup);
+            baustellenLayer.addLayer(mk);
+            totalCount++;
+          }
+        }
+        loaded=true;
+        break;
+      }catch(e){
+        console.warn(`[Baustellen ${ds.type}] Fehler:`,e.message);
+      }
+    }
+    if(!loaded)console.warn(`[Baustellen] ${ds.typeName} nicht ladbar`);
+  }
+
+  baustellenLayer.addTo(map);
+  document.getElementById('baustellenVal').textContent=
+    totalCount>0?`${totalCount} aktiv (OGD Wien)`:'Keine im Bezirk';
+  if(totalCount>0)showToast(`🚧 ${totalCount} Baustellen/Sperren im Bezirk`,'info');
 }
 
 function placeMarker(lat,lng,acc){
