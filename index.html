@@ -1,4 +1,4 @@
-<!-- Version 4.6 – Ladezonen als blaue Linien via OGD Wien CSV -->
+<!-- Version 4.7 – AnrainerInnenparkplätze via PARKENANRAINEROGD (lila Linien) -->
 <!DOCTYPE html>
 <html lang="de">
 <head>
@@ -56,7 +56,7 @@ header{display:flex;align-items:center;justify-content:space-between;padding:10p
 .result-title{font-size:15px;font-weight:800;letter-spacing:-.3px}
 .result-sub{font-size:11px;color:var(--muted);font-family:var(--font-m);margin-top:2px;line-height:1.4}
 .result-close{background:rgba(255,255,255,.08);border:none;color:var(--muted);width:26px;height:26px;border-radius:50%;font-size:11px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0}
-#gpsFab{position:absolute;bottom:calc(28px + var(--safe-bot));left:50%;transform:translateX(-50%);background:linear-gradient(145deg,var(--accent2),var(--accent));color:#fff;border:none;width:66px;height:66px;border-radius:50%;font-size:26px;cursor:pointer;z-index:400;box-shadow:0 4px 24px var(--accent-glow),0 2px 8px rgba(0,0,0,.4);transition:transform .2s,box-shadow .2s;display:flex;align-items:center;justify-content:center}
+#gpsFab{position:absolute;bottom:calc(28px + var(--safe-bot));left:60%;transform:translateX(-50%);background:linear-gradient(145deg,var(--accent2),var(--accent));color:#fff;border:none;width:66px;height:66px;border-radius:50%;font-size:26px;cursor:pointer;z-index:400;box-shadow:0 4px 24px var(--accent-glow),0 2px 8px rgba(0,0,0,.4);transition:transform .2s,box-shadow .2s;display:flex;align-items:center;justify-content:center}
 #gpsFab:active{transform:translateX(-50%) scale(.92)}
 #gpsFab.loading{animation:fabpulse 1s infinite}
 @keyframes fabpulse{0%,100%{box-shadow:0 4px 24px var(--accent-glow)}50%{box-shadow:0 4px 48px rgba(226,0,26,.8),0 0 0 8px rgba(226,0,26,.1)}}
@@ -172,6 +172,7 @@ header{display:flex;align-items:center;justify-content:space-between;padding:10p
   <div id="legend">
     <div class="legend-row"><span class="legend-line" style="background:#ff5f5f"></span>Kurzparkzone</div>
     <div class="legend-row"><span class="legend-line" style="background:#007AFF"></span>Ladezone</div>
+    <div class="legend-row"><span class="legend-line" style="background:#AF52DE"></span>Anrainerzone</div>
     <div class="legend-row"><span class="legend-line" style="background:#f0c844"></span>Dein Bezirk</div>
   </div>
 
@@ -196,13 +197,14 @@ header{display:flex;align-items:center;justify-content:space-between;padding:10p
   <div class="info-row"><span class="key">Letzter Check</span><span class="val" id="lastCheckVal">—</span></div>
   <div class="info-row"><span class="key">API-Status</span><span class="val" id="apiStatusVal">—</span></div>
   <div class="info-row"><span class="key">Ladezonen geladen</span><span class="val" id="ladezonenVal">—</span></div>
+  <div class="info-row"><span class="key">Anrainerzonen</span><span class="val" id="anrainerVal">—</span></div>
   <div class="info-row"><span class="key">Mein Bezirk</span><span class="val" id="savedBezirkVal">—</span></div>
   <div class="info-row"><span class="key">Benachrichtigungen</span><span class="val" id="notifStatusVal">—</span></div>
   <div class="info-row" style="gap:10px;flex-wrap:wrap;padding-top:4px">
     <button class="sheet-btn" onclick="requestNotifications()" style="background:linear-gradient(135deg,#ff1f35,#007AFF);color:#fff;flex:1">🔔 Benachrichtigungen</button>
     <button class="sheet-btn" onclick="clearSavedPos()" style="background:var(--surface2);color:var(--red);border:1px solid var(--border);flex:1">🗑 Cache löschen</button>
   </div>
-  <div style="padding:16px 0 4px;font-size:10px;color:var(--muted);font-family:var(--font-m)">Version 4.6 – OGD Wien · Ladezonen offizielle Daten</div>
+  <div style="padding:16px 0 4px;font-size:10px;color:var(--muted);font-family:var(--font-m)">Version 4.7 – OGD Wien · Ladezonen · Anrainerzonen</div>
 </div>
 
 <div class="toast" id="toast"></div>
@@ -225,7 +227,7 @@ const PROXIES=[
 ];
 const WFS='https://data.wien.gv.at/daten/geo?service=WFS&request=GetFeature&version=1.1.0&outputFormat=application/json&srsName=EPSG:4326';
 
-let map,userMarker,highlightLayer,zoneLayer,ladezonenLayer;
+let map,userMarker,highlightLayer,zoneLayer,ladezonenLayer,anrainerLayer;
 let selectedBezirk=null,activeSheet=null,swipeStartY=0;
 let watchId=null,lastLat=null,lastLng=null,followMode=true;
 
@@ -327,6 +329,7 @@ function highlightBezirk(bez){
   if(highlightLayer){map.removeLayer(highlightLayer);highlightLayer=null;}
   if(zoneLayer){map.removeLayer(zoneLayer);zoneLayer=null;}
   if(ladezonenLayer){map.removeLayer(ladezonenLayer);ladezonenLayer=null;}
+  if(anrainerLayer){map.removeLayer(anrainerLayer);anrainerLayer=null;}
   if(!BEZIRKE_GEO){showToast('Bezirksgrenzen laden…','info');return;}
   const f=BEZIRKE_GEO.features.find(f=>parseInt(f.properties.BEZNR)===parseInt(bez));
   if(!f){showToast(`Bezirk ${bez} nicht gefunden ⚠️`,'error');return;}
@@ -339,7 +342,7 @@ async function loadZones(bez,bezF){
   const b=L.geoJSON(bezF).getBounds();
   const bbox=`${b.getWest()},${b.getSouth()},${b.getEast()},${b.getNorth()},EPSG:4326`;
 
-  // Kurzparkstreifen – rote Linien
+  // ── Kurzparkstreifen – rote Linien ──
   const urlK=`${WFS}&typeName=ogdwien:KURZPARKSTREIFENOGD&BBOX=${bbox}`;
   for(const p of PROXIES){
     try{
@@ -353,26 +356,27 @@ async function loadZones(bez,bezF){
 
   // ── Ladezonen – blaue Linien via OGD Wien CSV ──
   await loadLadezonen(bez);
+
+  // ── AnrainerInnenparkplätze – lila Linien via PARKENANRAINEROGD ──
+  await loadAnrainerZonen(bez);
 }
 
-// ── Ladezonen: OGD Wien CSV → LINESTRING parsen → blaue Linien ──
+// ── Ladezonen: OGD Wien CSV → LINESTRING → blaue Linien ──
 async function loadLadezonen(bez){
   if(ladezonenLayer){map.removeLayer(ladezonenLayer);ladezonenLayer=null;}
   document.getElementById('ladezonenVal').textContent='lädt…';
 
-  // OGD Wien CSV – kein Login, kein CORS-Problem (CORS-Header vorhanden)
-  // Filtert nach Bezirk direkt im Request
   const csvUrl=`https://data.wien.gv.at/daten/geo?service=WFS&request=GetFeature&version=1.1.0`
     +`&typeName=ogdwien:LADEZONENOGD&srsName=EPSG:4326&outputFormat=csv`
     +`&CQL_FILTER=BEZIRK=${parseInt(bez)}`;
 
-  const proxiedUrls=[
-    csvUrl,                                                        // direkt (hat CORS-Header)
+  const urls=[
+    csvUrl,
     `https://corsproxy.io/?url=${encodeURIComponent(csvUrl)}`,
     `https://api.allorigins.win/raw?url=${encodeURIComponent(csvUrl)}`,
   ];
 
-  for(const url of proxiedUrls){
+  for(const url of urls){
     try{
       const ctrl=new AbortController();
       const t=setTimeout(()=>ctrl.abort(),20000);
@@ -382,9 +386,8 @@ async function loadLadezonen(bez){
       const csv=await res.text();
       if(!csv||csv.trim().length<10)continue;
 
-      // CSV parsen – Spalten: FID,OBJECTID,SHAPE,HV_ID,BEZIRK,ADRESSE,…,ZEITRAUM,AUSNAHME_TXT
       const lines=csv.trim().split('\n');
-      if(lines.length<2){continue;}
+      if(lines.length<2)continue;
 
       const header=parseCSVLine(lines[0]);
       const shapeIdx=header.indexOf('SHAPE');
@@ -400,30 +403,19 @@ async function loadLadezonen(bez){
         if(!lines[i].trim())continue;
         const cols=parseCSVLine(lines[i]);
         const shape=cols[shapeIdx]||'';
-        // LINESTRING (lng1 lat1, lng2 lat2, ...)
         const m=shape.match(/LINESTRING\s*\(([^)]+)\)/i);
         if(!m)continue;
-
         const coords=m[1].trim().split(',').map(p=>{
-          const [lng,lat]=p.trim().split(/\s+/).map(Number);
-          return [lat,lng]; // Leaflet: [lat,lng]
+          const[lng,lat]=p.trim().split(/\s+/).map(Number);
+          return[lat,lng];
         });
         if(coords.length<2)continue;
-
-        const adresse=cols[addrIdx]||'';
-        const zeitraum=cols[zeitraumIdx]||'';
-        const ausnahme=cols[ausnahmeIdx]||'';
-
-        const line=L.polyline(coords,{
-          color:'#007AFF',weight:5,opacity:0.9,
-          lineCap:'round',lineJoin:'round'
-        });
         const popup=`<b>🚚 Ladezone</b>`
-          +(adresse?`<br>📍 ${adresse}`:'')
-          +(zeitraum?`<br>🕐 ${zeitraum}`:'')
-          +(ausnahme?`<br>ℹ️ ${ausnahme}`:'');
-        line.bindPopup(popup);
-        ladezonenLayer.addLayer(line);
+          +(cols[addrIdx]?`<br>📍 ${cols[addrIdx]}`:'')
+          +(cols[zeitraumIdx]?`<br>🕐 ${cols[zeitraumIdx]}`:'')
+          +(cols[ausnahmeIdx]?`<br>ℹ️ ${cols[ausnahmeIdx]}`:'');
+        L.polyline(coords,{color:'#007AFF',weight:5,opacity:0.9,lineCap:'round',lineJoin:'round'})
+          .bindPopup(popup).addTo(ladezonenLayer);
         count++;
       }
 
@@ -432,7 +424,6 @@ async function loadLadezonen(bez){
       if(count>0)showToast(`✅ ${count} Ladezonen geladen`,'success');
       else showToast('ℹ️ Keine Ladezonen in diesem Bezirk','info');
       return;
-
     }catch(e){
       console.warn('[Ladezonen] Fehler:',e.message);
     }
@@ -441,7 +432,113 @@ async function loadLadezonen(bez){
   showToast('⚠️ Ladezonen konnten nicht geladen werden','error');
 }
 
-// Einfacher CSV-Parser der auch gequotete Felder mit Komma versteht
+// ── AnrainerInnenparkplätze: PARKENANRAINEROGD → lila Linien ──
+// Quelle: https://data.gv.at/datasets/6d92970a-d698-418b-8576-f3b03dc1a59a
+// Spalten: FID, OBJECTID, SHAPE (LINESTRING lng lat), ADRESSE ("BEZ, Straße"),
+//          AUSNAHME_TXT, STELLPL_ANZ, WEITERE_INF
+async function loadAnrainerZonen(bez){
+  if(anrainerLayer){map.removeLayer(anrainerLayer);anrainerLayer=null;}
+  document.getElementById('anrainerVal').textContent='lädt…';
+
+  const bezNr=parseInt(bez);
+  // Gesamter Datensatz – client-seitig nach Bezirk filtern via ADRESSE ("4, Straße")
+  const csvUrl='https://data.wien.gv.at/daten/geo?service=WFS&request=GetFeature'
+    +'&version=1.1.0&typeName=ogdwien:PARKENANRAINEROGD&srsName=EPSG:4326&outputFormat=csv';
+
+  const urls=[
+    csvUrl,
+    `https://corsproxy.io/?url=${encodeURIComponent(csvUrl)}`,
+    `https://api.allorigins.win/raw?url=${encodeURIComponent(csvUrl)}`,
+  ];
+
+  for(const url of urls){
+    try{
+      const ctrl=new AbortController();
+      const t=setTimeout(()=>ctrl.abort(),30000);
+      const res=await fetch(url,{signal:ctrl.signal});
+      clearTimeout(t);
+      if(!res.ok)continue;
+      const csv=await res.text();
+      if(!csv||csv.length<50)continue;
+      if(csv.trim().startsWith('<'))continue; // XML-Fehler statt CSV
+
+      const lines=csv.trim().split('\n');
+      if(lines.length<2){
+        document.getElementById('anrainerVal').textContent='Keine Daten';
+        return;
+      }
+
+      const header=parseCSVLine(lines[0]);
+      const shapeIdx   =header.indexOf('SHAPE');
+      const addrIdx    =header.indexOf('ADRESSE');
+      const ausnahmeIdx=header.indexOf('AUSNAHME_TXT');
+      const stellplIdx =header.indexOf('STELLPL_ANZ');
+      const infoIdx    =header.indexOf('WEITERE_INF');
+
+      if(shapeIdx<0){
+        console.warn('[Anrainer] Keine SHAPE-Spalte. Header:',header.join(', '));
+        continue;
+      }
+
+      anrainerLayer=L.layerGroup();
+      let count=0;
+
+      for(let i=1;i<lines.length;i++){
+        if(!lines[i].trim())continue;
+        const cols=parseCSVLine(lines[i]);
+
+        // Bezirk-Filter: ADRESSE beginnt mit "BEZ, " z.B. "4, Margaretenstraße 3"
+        const addr=addrIdx>=0 ? cols[addrIdx]||'' : '';
+        const addrBez=parseInt(addr.split(',')[0]);
+        if(isNaN(addrBez)||addrBez!==bezNr)continue;
+
+        const shape=cols[shapeIdx]||'';
+        const m=shape.match(/LINESTRING\s*\(([^)]+)\)/i);
+        if(!m)continue;
+
+        const coords=m[1].trim().split(',').map(p=>{
+          const[lng,lat]=p.trim().split(/\s+/).map(Number);
+          return[lat,lng]; // Leaflet: [lat,lng]
+        });
+        if(coords.length<2)continue;
+
+        const ausnahme=ausnahmeIdx>=0 ? cols[ausnahmeIdx]||'' : '';
+        const stellpl =stellplIdx>=0  ? cols[stellplIdx] ||'' : '';
+        const info    =infoIdx>=0     ? cols[infoIdx]    ||'' : '';
+
+        const popup=`<b>🅿️ AnrainerInnen-Parkplatz</b>`
+          +(addr    ? `<br>📍 ${addr}` : '')
+          +(stellpl ? `<br>🚗 ${stellpl} Stellplätze` : '')
+          +(ausnahme? `<br>📋 ${ausnahme}` : '')
+          +(info&&info!=='null'&&info.startsWith('http')
+              ? `<br><a href="${info}" target="_blank" style="color:#AF52DE">ℹ️ Mehr Info</a>` : '');
+
+        L.polyline(coords,{
+          color:'#AF52DE',
+          weight:5,
+          opacity:0.9,
+          lineCap:'round',
+          lineJoin:'round'
+        }).bindPopup(popup).addTo(anrainerLayer);
+        count++;
+      }
+
+      anrainerLayer.addTo(map);
+      document.getElementById('anrainerVal').textContent=
+        count>0 ? `${count} Zonen (OGD Wien)` : 'Keine im Bezirk';
+      if(count>0)showToast(`🅿️ ${count} Anrainerparkplätze geladen`,'success');
+      else showToast('ℹ️ Keine Anrainerzonen in diesem Bezirk','info');
+      return;
+
+    }catch(e){
+      console.warn('[Anrainer] Fehler:',e.message);
+    }
+  }
+  document.getElementById('anrainerVal').textContent='Nicht verfügbar';
+  showToast('⚠️ Anrainerzonen konnten nicht geladen werden','error');
+}
+
+// ── CSV-Parser: gequotete Felder mit Komma werden korrekt behandelt ──
 function parseCSVLine(line){
   const result=[];
   let cur='',inQ=false;
