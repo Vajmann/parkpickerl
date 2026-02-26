@@ -56,7 +56,7 @@ header{display:flex;align-items:center;justify-content:space-between;padding:10p
 .result-title{font-size:15px;font-weight:800;letter-spacing:-.3px}
 .result-sub{font-size:11px;color:var(--muted);font-family:var(--font-m);margin-top:2px;line-height:1.4}
 .result-close{background:rgba(255,255,255,.08);border:none;color:var(--muted);width:26px;height:26px;border-radius:50%;font-size:11px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0}
-#gpsFab{position:absolute;bottom:calc(28px + var(--safe-bot));left:60%;transform:translateX(-60%);background:linear-gradient(145deg,var(--accent2),var(--accent));color:#fff;border:none;width:66px;height:66px;border-radius:50%;font-size:26px;cursor:pointer;z-index:400;box-shadow:0 4px 24px var(--accent-glow),0 2px 8px rgba(0,0,0,.4);transition:transform .2s,box-shadow .2s;display:flex;align-items:center;justify-content:center}
+#gpsFab{position:absolute;bottom:calc(28px + var(--safe-bot));left:50%;transform:translateX(-50%);background:linear-gradient(145deg,var(--accent2),var(--accent));color:#fff;border:none;width:66px;height:66px;border-radius:50%;font-size:26px;cursor:pointer;z-index:400;box-shadow:0 4px 24px var(--accent-glow),0 2px 8px rgba(0,0,0,.4);transition:transform .2s,box-shadow .2s;display:flex;align-items:center;justify-content:center}
 #gpsFab:active{transform:translateX(-50%) scale(.92)}
 #gpsFab.loading{animation:fabpulse 1s infinite}
 @keyframes fabpulse{0%,100%{box-shadow:0 4px 24px var(--accent-glow)}50%{box-shadow:0 4px 48px rgba(226,0,26,.8),0 0 0 8px rgba(226,0,26,.1)}}
@@ -66,7 +66,7 @@ header{display:flex;align-items:center;justify-content:space-between;padding:10p
 #mapOffline.visible{display:flex}
 #mapOffline span{font-size:42px}
 #mapOffline p{font-size:14px;color:var(--muted);font-family:var(--font-m);text-align:center}
-#legend{position:absolute;bottom:calc(16px + var(--safe-bot));left:16px;background:rgba(22,24,31,.88);backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:10px 14px;z-index:400;font-size:11px;font-family:var(--font-m);display:flex;flex-direction:column;gap:6px}
+#legend{position:absolute;bottom:calc(110px + var(--safe-bot));left:16px;background:rgba(22,24,31,.88);backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:10px 14px;z-index:400;font-size:11px;font-family:var(--font-m);display:flex;flex-direction:column;gap:6px}
 .legend-row{display:flex;align-items:center;gap:8px;color:var(--text)}
 .legend-dot{width:12px;height:12px;border-radius:50%;flex-shrink:0;border:2px solid rgba(255,255,255,.3)}
 .legend-line{width:20px;height:3px;border-radius:2px;flex-shrink:0}
@@ -111,7 +111,7 @@ header{display:flex;align-items:center;justify-content:space-between;padding:10p
 #installBanner strong{color:var(--accent)}
 .btn-install{background:linear-gradient(135deg,#ff1f35,#007AFF);color:#fff;border:none;border-radius:8px;padding:7px 14px;font-weight:700;font-size:12px;cursor:pointer;font-family:var(--font-d)}
 .btn-dismiss{background:none;border:none;color:var(--muted);font-size:18px;cursor:pointer}
-.leaflet-bottom.leaflet-left{bottom:90px;}
+.leaflet-bottom.leaflet-left{bottom:110px;}
 @media(prefers-color-scheme:light){
 :root{--bg:#F2F2F7;--surface:#fff;--surface2:#f0f0f2;--border:#e0e0e5;--text:#1a1a2e;--muted:#8888aa}
 #resultCard{background:rgba(255,255,255,.92)}
@@ -351,43 +351,78 @@ async function loadZones(bez,bezF){
     }catch(e){}
   }
 
-  // ── Anrainerparkplätze – blaue Punkte via WFS (kein Login nötig!) ──
-  const urlA=`${WFS}&typeName=ogdwien:ANRAINERINNENPARKPLATZOGD&BBOX=${bbox}`;
-  for(const p of PROXIES){
-    try{
-      const r=await fetch(p(urlA));if(!r.ok)throw 0;
-      const d=await r.json();if(!d.features)throw 0;
-      if(anrainerLayer){map.removeLayer(anrainerLayer);anrainerLayer=null;}
+  // ── Anrainerparkplätze – blaue Punkte via WFS ──
+  await loadAnrainer(bbox, bez);
+}
 
-      // Jeden Parkplatz als blauer Kreis auf der Karte
+async function loadAnrainer(bbox, bez){
+  if(anrainerLayer){map.removeLayer(anrainerLayer);anrainerLayer=null;}
+  document.getElementById('anrainerVal').textContent='lädt…';
+
+  // Direkt + alle Proxies versuchen, mit sichtbarem Fehler
+  const baseUrl=`${WFS}&typeName=ogdwien:ANRAINERINNENPARKPLATZOGD&BBOX=${bbox}`;
+  const urls=[
+    baseUrl,                          // direkt (manchmal erlaubt)
+    PROXIES[0](baseUrl),              // corsproxy.io
+    PROXIES[1](baseUrl),              // allorigins
+    PROXIES[2](baseUrl),              // thingproxy
+  ];
+
+  for(let i=0;i<urls.length;i++){
+    try{
+      showToast(`🔄 Anrainer laden… (${i===0?'direkt':`Proxy ${i}`})`, 'info');
+      const ctrl=new AbortController();
+      const t=setTimeout(()=>ctrl.abort(),15000);
+      const r=await fetch(urls[i],{signal:ctrl.signal});
+      clearTimeout(t);
+      if(!r.ok){
+        console.warn(`[Anrainer] HTTP ${r.status} bei URL ${i}`);
+        continue;
+      }
+      const text=await r.text();
+      let d;
+      try{d=JSON.parse(text);}catch(e){
+        console.warn(`[Anrainer] Kein JSON bei URL ${i}:`,text.substring(0,100));
+        continue;
+      }
+      if(!d.features){
+        console.warn(`[Anrainer] Kein features-Array:`,JSON.stringify(d).substring(0,100));
+        continue;
+      }
+
+      const anzahl=d.features.length;
+      document.getElementById('anrainerVal').textContent=`${anzahl} geladen (URL ${i})`;
+
+      if(anzahl===0){
+        showToast('ℹ️ Keine Anrainerparkplätze in diesem Bezirk','info');
+        return;
+      }
+
+      // Punkte auf Karte zeichnen
       anrainerLayer=L.geoJSON(d,{
-        pointToLayer:(feature,latlng)=>{
-          return L.circleMarker(latlng,{
-            radius:7,
-            color:'#fff',
-            weight:2,
-            fillColor:'#007AFF',
-            fillOpacity:0.95
-          });
-        },
-        onEachFeature:(feature,layer)=>{
-          // Popup mit Details wenn man draufklickt
-          const p=feature.properties;
-          const info=[
-            p.ADRESSE||p.STRASSE||p.STR||'',
-            p.BEZIRK||p.BEZ||p.BEZNR||'',
-            p.ANZAHL_PP?`${p.ANZAHL_PP} Plätze`:''
-          ].filter(Boolean).join(' · ');
-          if(info)layer.bindPopup(`<b>🅿️ Anrainerparkplatz</b><br>${info}`,{className:'anrainer-popup'});
+        pointToLayer:(_,latlng)=>L.circleMarker(latlng,{
+          radius:8,color:'#fff',weight:2,fillColor:'#007AFF',fillOpacity:0.95
+        }),
+        onEachFeature:(feat,layer)=>{
+          const p=feat.properties;
+          const info=Object.entries(p).filter(([k,v])=>v).map(([k,v])=>`${k}: ${v}`).join('<br>');
+          layer.bindPopup(`<b>🅿️ Anrainerparkplatz</b><br>${info||'Keine Details'}`);
         }
       }).addTo(map);
 
-      const anzahl=d.features.length;
-      document.getElementById('anrainerVal').textContent=`${anzahl} Plätze geladen`;
-      console.log(`[Anrainer] ${anzahl} Parkplätze geladen für Bezirk ${bez}`);
-      break;
-    }catch(e){console.warn('[Anrainer] Proxy fehlgeschlagen');}
+      showToast(`✅ ${anzahl} Anrainerparkplätze geladen`,'success');
+      console.log(`[Anrainer] ✅ ${anzahl} Punkte via URL ${i}`);
+      return;
+
+    }catch(e){
+      console.warn(`[Anrainer] Fehler bei URL ${i}:`,e.message||e);
+    }
   }
+
+  // Alle fehlgeschlagen
+  document.getElementById('anrainerVal').textContent='Fehler – alle Proxies gescheitert';
+  showToast('❌ Anrainer: alle Proxies gescheitert','error');
+  console.error('[Anrainer] Alle URLs fehlgeschlagen. BBOX war:', bbox);
 }
 
 function placeMarker(lat,lng,acc){
