@@ -56,7 +56,7 @@ header{display:flex;align-items:center;justify-content:space-between;padding:10p
 .result-title{font-size:15px;font-weight:800;letter-spacing:-.3px}
 .result-sub{font-size:11px;color:var(--muted);font-family:var(--font-m);margin-top:2px;line-height:1.4}
 .result-close{background:rgba(255,255,255,.08);border:none;color:var(--muted);width:26px;height:26px;border-radius:50%;font-size:11px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0}
-#gpsFab{position:absolute;bottom:calc(28px + var(--safe-bot));left:50%;transform:translateX(-50%);background:linear-gradient(145deg,var(--accent2),var(--accent));color:#fff;border:none;width:66px;height:66px;border-radius:50%;font-size:26px;cursor:pointer;z-index:400;box-shadow:0 4px 24px var(--accent-glow),0 2px 8px rgba(0,0,0,.4);transition:transform .2s,box-shadow .2s;display:flex;align-items:center;justify-content:center}
+#gpsFab{position:absolute;bottom:calc(28px + var(--safe-bot));left:60%;transform:translateX(-60%);background:linear-gradient(145deg,var(--accent2),var(--accent));color:#fff;border:none;width:66px;height:66px;border-radius:50%;font-size:26px;cursor:pointer;z-index:400;box-shadow:0 4px 24px var(--accent-glow),0 2px 8px rgba(0,0,0,.4);transition:transform .2s,box-shadow .2s;display:flex;align-items:center;justify-content:center}
 #gpsFab:active{transform:translateX(-50%) scale(.92)}
 #gpsFab.loading{animation:fabpulse 1s infinite}
 @keyframes fabpulse{0%,100%{box-shadow:0 4px 24px var(--accent-glow)}50%{box-shadow:0 4px 48px rgba(226,0,26,.8),0 0 0 8px rgba(226,0,26,.1)}}
@@ -66,7 +66,7 @@ header{display:flex;align-items:center;justify-content:space-between;padding:10p
 #mapOffline.visible{display:flex}
 #mapOffline span{font-size:42px}
 #mapOffline p{font-size:14px;color:var(--muted);font-family:var(--font-m);text-align:center}
-#legend{position:absolute;bottom:calc(110px + var(--safe-bot));left:16px;background:rgba(22,24,31,.88);backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:10px 14px;z-index:400;font-size:11px;font-family:var(--font-m);display:flex;flex-direction:column;gap:6px}
+#legend{position:absolute;bottom:calc(16px + var(--safe-bot));left:16px;background:rgba(22,24,31,.88);backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:10px 14px;z-index:400;font-size:11px;font-family:var(--font-m);display:flex;flex-direction:column;gap:6px}
 .legend-row{display:flex;align-items:center;gap:8px;color:var(--text)}
 .legend-dot{width:12px;height:12px;border-radius:50%;flex-shrink:0;border:2px solid rgba(255,255,255,.3)}
 .legend-line{width:20px;height:3px;border-radius:2px;flex-shrink:0}
@@ -111,7 +111,7 @@ header{display:flex;align-items:center;justify-content:space-between;padding:10p
 #installBanner strong{color:var(--accent)}
 .btn-install{background:linear-gradient(135deg,#ff1f35,#007AFF);color:#fff;border:none;border-radius:8px;padding:7px 14px;font-weight:700;font-size:12px;cursor:pointer;font-family:var(--font-d)}
 .btn-dismiss{background:none;border:none;color:var(--muted);font-size:18px;cursor:pointer}
-.leaflet-bottom.leaflet-left{bottom:110px;}
+.leaflet-bottom.leaflet-left{bottom:90px;}
 @media(prefers-color-scheme:light){
 :root{--bg:#F2F2F7;--surface:#fff;--surface2:#f0f0f2;--border:#e0e0e5;--text:#1a1a2e;--muted:#8888aa}
 #resultCard{background:rgba(255,255,255,.92)}
@@ -351,94 +351,43 @@ async function loadZones(bez,bezF){
     }catch(e){}
   }
 
-  // ── Anrainerparkplätze – blaue Punkte via WFS ──
-  await loadAnrainer(bbox, bez);
-}
-
-async function loadAnrainer(bbox, bez){
-  if(anrainerLayer){map.removeLayer(anrainerLayer);anrainerLayer=null;}
-  document.getElementById('anrainerVal').textContent='lädt…';
-
-  // BBOX aus "west,south,east,north,EPSG:4326" in Overpass-Format (south,west,north,east)
-  const parts=bbox.split(',');
-  const [west,south,east,north]=[parseFloat(parts[0]),parseFloat(parts[1]),parseFloat(parts[2]),parseFloat(parts[3])];
-
-  // Overpass QL – kein CORS-Problem, keine Proxies nötig!
-  const query=`[out:json][timeout:30];
-(
-  node["amenity"="parking"]["access"="residents"](${south},${west},${north},${east});
-  way["amenity"="parking"]["access"="residents"](${south},${west},${north},${east});
-  node["amenity"="parking"]["parking"="street_side"]["access"~"residents|permissive"](${south},${west},${north},${east});
-  way["amenity"="parking"]["parking"="street_side"](${south},${west},${north},${east});
-  node["parking"="street_side"](${south},${west},${north},${east});
-  way["parking"="street_side"](${south},${west},${north},${east});
-);
-out center;`;
-
-  const endpoints=[
-    'https://overpass-api.de/api/interpreter',
-    'https://overpass.kumi.systems/api/interpreter',
-    'https://maps.mail.ru/osm/tools/overpass/api/interpreter',
-  ];
-
-  for(const ep of endpoints){
+  // ── Anrainerparkplätze – blaue Punkte via WFS (kein Login nötig!) ──
+  const urlA=`${WFS}&typeName=ogdwien:ANRAINERINNENPARKPLATZOGD&BBOX=${bbox}`;
+  for(const p of PROXIES){
     try{
-      const ctrl=new AbortController();
-      const t=setTimeout(()=>ctrl.abort(),30000);
-      const r=await fetch(ep,{
-        method:'POST',
-        body:'data='+encodeURIComponent(query),
-        headers:{'Content-Type':'application/x-www-form-urlencoded'},
-        signal:ctrl.signal
-      });
-      clearTimeout(t);
-      if(!r.ok)continue;
-      const d=await r.json();
-      if(!d.elements)continue;
+      const r=await fetch(p(urlA));if(!r.ok)throw 0;
+      const d=await r.json();if(!d.features)throw 0;
+      if(anrainerLayer){map.removeLayer(anrainerLayer);anrainerLayer=null;}
 
-      const elems=d.elements;
-      document.getElementById('anrainerVal').textContent=`${elems.length} via OSM`;
+      // Jeden Parkplatz als blauer Kreis auf der Karte
+      anrainerLayer=L.geoJSON(d,{
+        pointToLayer:(feature,latlng)=>{
+          return L.circleMarker(latlng,{
+            radius:7,
+            color:'#fff',
+            weight:2,
+            fillColor:'#007AFF',
+            fillOpacity:0.95
+          });
+        },
+        onEachFeature:(feature,layer)=>{
+          // Popup mit Details wenn man draufklickt
+          const p=feature.properties;
+          const info=[
+            p.ADRESSE||p.STRASSE||p.STR||'',
+            p.BEZIRK||p.BEZ||p.BEZNR||'',
+            p.ANZAHL_PP?`${p.ANZAHL_PP} Plätze`:''
+          ].filter(Boolean).join(' · ');
+          if(info)layer.bindPopup(`<b>🅿️ Anrainerparkplatz</b><br>${info}`,{className:'anrainer-popup'});
+        }
+      }).addTo(map);
 
-      if(elems.length===0){
-        showToast('ℹ️ Keine Anrainerparkplätze in OSM für diesen Bezirk','info');
-        return;
-      }
-
-      // OSM-Elemente auf Karte zeichnen
-      anrainerLayer=L.layerGroup();
-      elems.forEach(el=>{
-        // Koordinaten: nodes haben lat/lon, ways haben center
-        const lat=el.lat??el.center?.lat;
-        const lng=el.lon??el.center?.lon;
-        if(!lat||!lng)return;
-
-        const marker=L.circleMarker([lat,lng],{
-          radius:8,color:'#fff',weight:2,
-          fillColor:'#007AFF',fillOpacity:0.9
-        });
-
-        // Popup mit OSM-Tags
-        const tags=el.tags||{};
-        const details=[
-          tags.name||tags['addr:street']||'',
-          tags.capacity?`${tags.capacity} Plätze`:'',
-          tags.description||''
-        ].filter(Boolean).join(' · ');
-        marker.bindPopup(`<b>🅿️ Anrainerparkplatz</b>${details?'<br>'+details:''}`);
-        anrainerLayer.addLayer(marker);
-      });
-      anrainerLayer.addTo(map);
-
-      showToast(`✅ ${elems.length} Anrainerparkplätze (OSM)`,'success');
-      return;
-
-    }catch(e){
-      console.warn('[Anrainer OSM] Fehler:',e.message);
-    }
+      const anzahl=d.features.length;
+      document.getElementById('anrainerVal').textContent=`${anzahl} Plätze geladen`;
+      console.log(`[Anrainer] ${anzahl} Parkplätze geladen für Bezirk ${bez}`);
+      break;
+    }catch(e){console.warn('[Anrainer] Proxy fehlgeschlagen');}
   }
-
-  document.getElementById('anrainerVal').textContent='Keine OSM-Daten';
-  showToast('⚠️ Anrainer: keine Daten in OpenStreetMap','info');
 }
 
 function placeMarker(lat,lng,acc){
