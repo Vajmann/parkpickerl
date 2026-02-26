@@ -359,70 +359,86 @@ async function loadAnrainer(bbox, bez){
   if(anrainerLayer){map.removeLayer(anrainerLayer);anrainerLayer=null;}
   document.getElementById('anrainerVal').textContent='lädt…';
 
-  // Direkt + alle Proxies versuchen, mit sichtbarem Fehler
-  const baseUrl=`${WFS}&typeName=ogdwien:ANRAINERINNENPARKPLATZOGD&BBOX=${bbox}`;
-  const urls=[
-    baseUrl,                          // direkt (manchmal erlaubt)
-    PROXIES[0](baseUrl),              // corsproxy.io
-    PROXIES[1](baseUrl),              // allorigins
-    PROXIES[2](baseUrl),              // thingproxy
+  // BBOX aus "west,south,east,north,EPSG:4326" in Overpass-Format (south,west,north,east)
+  const parts=bbox.split(',');
+  const [west,south,east,north]=[parseFloat(parts[0]),parseFloat(parts[1]),parseFloat(parts[2]),parseFloat(parts[3])];
+
+  // Overpass QL – kein CORS-Problem, keine Proxies nötig!
+  const query=`[out:json][timeout:30];
+(
+  node["amenity"="parking"]["access"="residents"](${south},${west},${north},${east});
+  way["amenity"="parking"]["access"="residents"](${south},${west},${north},${east});
+  node["amenity"="parking"]["parking"="street_side"]["access"~"residents|permissive"](${south},${west},${north},${east});
+  way["amenity"="parking"]["parking"="street_side"](${south},${west},${north},${east});
+  node["parking"="street_side"](${south},${west},${north},${east});
+  way["parking"="street_side"](${south},${west},${north},${east});
+);
+out center;`;
+
+  const endpoints=[
+    'https://overpass-api.de/api/interpreter',
+    'https://overpass.kumi.systems/api/interpreter',
+    'https://maps.mail.ru/osm/tools/overpass/api/interpreter',
   ];
 
-  for(let i=0;i<urls.length;i++){
+  for(const ep of endpoints){
     try{
-      showToast(`🔄 Anrainer laden… (${i===0?'direkt':`Proxy ${i}`})`, 'info');
       const ctrl=new AbortController();
-      const t=setTimeout(()=>ctrl.abort(),15000);
-      const r=await fetch(urls[i],{signal:ctrl.signal});
+      const t=setTimeout(()=>ctrl.abort(),30000);
+      const r=await fetch(ep,{
+        method:'POST',
+        body:'data='+encodeURIComponent(query),
+        headers:{'Content-Type':'application/x-www-form-urlencoded'},
+        signal:ctrl.signal
+      });
       clearTimeout(t);
-      if(!r.ok){
-        console.warn(`[Anrainer] HTTP ${r.status} bei URL ${i}`);
-        continue;
-      }
-      const text=await r.text();
-      let d;
-      try{d=JSON.parse(text);}catch(e){
-        console.warn(`[Anrainer] Kein JSON bei URL ${i}:`,text.substring(0,100));
-        continue;
-      }
-      if(!d.features){
-        console.warn(`[Anrainer] Kein features-Array:`,JSON.stringify(d).substring(0,100));
-        continue;
-      }
+      if(!r.ok)continue;
+      const d=await r.json();
+      if(!d.elements)continue;
 
-      const anzahl=d.features.length;
-      document.getElementById('anrainerVal').textContent=`${anzahl} geladen (URL ${i})`;
+      const elems=d.elements;
+      document.getElementById('anrainerVal').textContent=`${elems.length} via OSM`;
 
-      if(anzahl===0){
-        showToast('ℹ️ Keine Anrainerparkplätze in diesem Bezirk','info');
+      if(elems.length===0){
+        showToast('ℹ️ Keine Anrainerparkplätze in OSM für diesen Bezirk','info');
         return;
       }
 
-      // Punkte auf Karte zeichnen
-      anrainerLayer=L.geoJSON(d,{
-        pointToLayer:(_,latlng)=>L.circleMarker(latlng,{
-          radius:8,color:'#fff',weight:2,fillColor:'#007AFF',fillOpacity:0.95
-        }),
-        onEachFeature:(feat,layer)=>{
-          const p=feat.properties;
-          const info=Object.entries(p).filter(([k,v])=>v).map(([k,v])=>`${k}: ${v}`).join('<br>');
-          layer.bindPopup(`<b>🅿️ Anrainerparkplatz</b><br>${info||'Keine Details'}`);
-        }
-      }).addTo(map);
+      // OSM-Elemente auf Karte zeichnen
+      anrainerLayer=L.layerGroup();
+      elems.forEach(el=>{
+        // Koordinaten: nodes haben lat/lon, ways haben center
+        const lat=el.lat??el.center?.lat;
+        const lng=el.lon??el.center?.lon;
+        if(!lat||!lng)return;
 
-      showToast(`✅ ${anzahl} Anrainerparkplätze geladen`,'success');
-      console.log(`[Anrainer] ✅ ${anzahl} Punkte via URL ${i}`);
+        const marker=L.circleMarker([lat,lng],{
+          radius:8,color:'#fff',weight:2,
+          fillColor:'#007AFF',fillOpacity:0.9
+        });
+
+        // Popup mit OSM-Tags
+        const tags=el.tags||{};
+        const details=[
+          tags.name||tags['addr:street']||'',
+          tags.capacity?`${tags.capacity} Plätze`:'',
+          tags.description||''
+        ].filter(Boolean).join(' · ');
+        marker.bindPopup(`<b>🅿️ Anrainerparkplatz</b>${details?'<br>'+details:''}`);
+        anrainerLayer.addLayer(marker);
+      });
+      anrainerLayer.addTo(map);
+
+      showToast(`✅ ${elems.length} Anrainerparkplätze (OSM)`,'success');
       return;
 
     }catch(e){
-      console.warn(`[Anrainer] Fehler bei URL ${i}:`,e.message||e);
+      console.warn('[Anrainer OSM] Fehler:',e.message);
     }
   }
 
-  // Alle fehlgeschlagen
-  document.getElementById('anrainerVal').textContent='Fehler – alle Proxies gescheitert';
-  showToast('❌ Anrainer: alle Proxies gescheitert','error');
-  console.error('[Anrainer] Alle URLs fehlgeschlagen. BBOX war:', bbox);
+  document.getElementById('anrainerVal').textContent='Keine OSM-Daten';
+  showToast('⚠️ Anrainer: keine Daten in OpenStreetMap','info');
 }
 
 function placeMarker(lat,lng,acc){
