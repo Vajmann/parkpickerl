@@ -461,73 +461,105 @@ function parseCSVLine(line){
   return result;
 }
 
-// ── Baustellen: OGD Wien – Linien + Punkte, orange ──
+// ── Baustellen: OGD Wien – alle Wien laden, im Browser nach Bezirk filtern ──
 async function loadBaustellen(bez){
   if(baustellenLayer){map.removeLayer(baustellenLayer);baustellenLayer=null;}
   document.getElementById('baustellenVal').textContent='lädt…';
   baustellenLayer=L.layerGroup();
   let totalCount=0;
 
-  // Beide Datensätze laden: Linien (Sperren) + Punkte (Baustellen-Standorte)
   const datasets=[
-    {
-      typeName:'ogdwien:BAUSTELLENLINIEOGD',
-      type:'line',
-      label:'Sperre'
-    },
-    {
-      typeName:'ogdwien:BAUSTELLENPKTOGD',
-      type:'point',
-      label:'Baustelle'
-    }
+    {typeName:'ogdwien:BAUSTELLENLINIEOGD', type:'line',  label:'Sperre'},
+    {typeName:'ogdwien:BAUSTELLENPKTOGD',   type:'point', label:'Baustelle'},
   ];
 
+  // Bezirks-BBOX für räumlichen Filter (BBOX-Filter ist zuverlässiger als CQL)
+  let bboxStr=null;
+  if(highlightLayer){
+    const b=highlightLayer.getBounds();
+    // WFS BBOX: minx,miny,maxx,maxy,EPSG:4326
+    bboxStr=`${b.getWest()},${b.getSouth()},${b.getEast()},${b.getNorth()},EPSG:4326`;
+  }
+
   for(const ds of datasets){
-    const csvUrl=`https://data.wien.gv.at/daten/geo?service=WFS&request=GetFeature&version=1.1.0`
-      +`&typeName=${ds.typeName}&srsName=EPSG:4326&outputFormat=csv`
-      +`&CQL_FILTER=BEZIRK=${parseInt(bez)}`;
+    // Mit BBOX filtern wenn verfügbar, sonst ganz Wien
+    const baseUrl=`https://data.wien.gv.at/daten/geo?service=WFS&request=GetFeature`
+      +`&version=1.1.0&typeName=${ds.typeName}&srsName=EPSG:4326&outputFormat=csv`
+      +(bboxStr?`&BBOX=${bboxStr}`:'');
 
     const urls=[
-      csvUrl,
-      `https://corsproxy.io/?url=${encodeURIComponent(csvUrl)}`,
-      `https://api.allorigins.win/raw?url=${encodeURIComponent(csvUrl)}`,
+      baseUrl,
+      `https://corsproxy.io/?url=${encodeURIComponent(baseUrl)}`,
+      `https://api.allorigins.win/raw?url=${encodeURIComponent(baseUrl)}`,
+      `https://thingproxy.freeboard.io/fetch/${baseUrl}`,
     ];
 
     let loaded=false;
-    for(const url of urls){
+    for(let ui=0;ui<urls.length;ui++){
+      const urlLabel=ui===0?'direkt':`Proxy${ui}`;
       try{
+        showToast(`🔄 Baustellen ${ds.type} (${urlLabel})…`,'info');
         const ctrl=new AbortController();
-        const t=setTimeout(()=>ctrl.abort(),20000);
-        const res=await fetch(url,{signal:ctrl.signal});
+        const t=setTimeout(()=>ctrl.abort(),25000);
+        const res=await fetch(urls[ui],{signal:ctrl.signal});
         clearTimeout(t);
-        if(!res.ok)continue;
+
+        if(!res.ok){
+          console.warn(`[Baustellen] HTTP ${res.status} (${urlLabel})`);
+          continue;
+        }
         const csv=await res.text();
-        if(!csv||csv.trim().length<10)continue;
+        console.log(`[Baustellen ${ds.type}] ${urlLabel}: ${csv.length} Zeichen empfangen`);
+
+        if(!csv||csv.trim().length<10){
+          console.warn(`[Baustellen] Leere Antwort (${urlLabel})`);
+          continue;
+        }
+        // Prüfe ob XML-Fehler zurückkam statt CSV
+        if(csv.trim().startsWith('<')){
+          console.warn(`[Baustellen] XML/HTML statt CSV:`,csv.substring(0,200));
+          continue;
+        }
 
         const lines=csv.trim().split('\n');
+        console.log(`[Baustellen ${ds.type}] ${lines.length-1} Datensätze`);
         if(lines.length<2){loaded=true;break;}
 
         const header=parseCSVLine(lines[0]);
-        const shapeIdx=header.indexOf('SHAPE');
-        const nameIdx=header.findIndex(h=>/name|bezeich|titel|objekt/i.test(h));
-        const vonIdx=header.findIndex(h=>/von_dat|beginn|datum_von|start/i.test(h));
-        const bisIdx=header.findIndex(h=>/bis_dat|ende|datum_bis|end/i.test(h));
-        const infoIdx=header.findIndex(h=>/info|beschreib|text|anmerk/i.test(h));
-        if(shapeIdx<0){loaded=true;break;}
+        console.log(`[Baustellen] Spalten:`,header.join(', '));
 
+        const shapeIdx=header.indexOf('SHAPE');
+        // Flexible Spalten-Erkennung
+        const nameIdx =header.findIndex(h=>/^(BEZEICHNUNG|NAME|OBJEKT|TITEL|STRASSE|ADRESSE)$/i.test(h));
+        const vonIdx  =header.findIndex(h=>/^(VON_DAT|DATUM_VON|BEGINN|START_DAT|BEGINN_DAT)$/i.test(h));
+        const bisIdx  =header.findIndex(h=>/^(BIS_DAT|DATUM_BIS|ENDE|END_DAT|ENDE_DAT)$/i.test(h));
+        const infoIdx =header.findIndex(h=>/^(INFO|BESCHREIBUNG|ANMERKUNG|TEXT|MASSNAHME)$/i.test(h));
+        const bezIdx  =header.findIndex(h=>/^BEZIRK$/i.test(h));
+
+        if(shapeIdx<0){
+          console.warn(`[Baustellen] Keine SHAPE-Spalte in:`,header);
+          loaded=true;break;
+        }
+
+        let rowCount=0;
         for(let i=1;i<lines.length;i++){
           if(!lines[i].trim())continue;
           const cols=parseCSVLine(lines[i]);
-          const shape=cols[shapeIdx]||'';
 
-          const name=nameIdx>=0?cols[nameIdx]:'';
-          const von=vonIdx>=0?cols[vonIdx]:'';
-          const bis=bisIdx>=0?cols[bisIdx]:'';
-          const info=infoIdx>=0?cols[infoIdx]:'';
+          // Client-seitiger Bezirk-Filter wenn BEZIRK-Spalte vorhanden
+          if(bezIdx>=0&&cols[bezIdx]){
+            if(parseInt(cols[bezIdx])!==parseInt(bez))continue;
+          }
+
+          const shape=cols[shapeIdx]||'';
+          const name =nameIdx>=0 ?cols[nameIdx] :'';
+          const von  =vonIdx>=0  ?cols[vonIdx]  :'';
+          const bis  =bisIdx>=0  ?cols[bisIdx]  :'';
+          const info =infoIdx>=0 ?cols[infoIdx] :'';
 
           const popup=`<b>🚧 ${ds.label}</b>`
             +(name?`<br>📍 ${name}`:'')
-            +(von&&bis?`<br>📅 ${von} – ${bis}`:(von?`<br>📅 ab ${von}`:''))
+            +(von||bis?`<br>📅 ${von}${bis?' – '+bis:''}`:'')
             +(info?`<br>ℹ️ ${info}`:'');
 
           if(ds.type==='line'){
@@ -538,48 +570,42 @@ async function loadBaustellen(bez){
               return[lat,lng];
             });
             if(coords.length<2)continue;
-            const line=L.polyline(coords,{
-              color:'#FF9500',weight:5,opacity:0.9,
-              lineCap:'round',lineJoin:'round',
-              dashArray:'8,4'
-            });
-            line.bindPopup(popup);
-            baustellenLayer.addLayer(line);
-            totalCount++;
+            L.polyline(coords,{
+              color:'#FF9500',weight:6,opacity:0.95,
+              lineCap:'round',lineJoin:'round',dashArray:'10,5'
+            }).bindPopup(popup).addTo(baustellenLayer);
+            rowCount++;totalCount++;
           } else {
-            // POINT (lng lat)
             const m=shape.match(/POINT\s*\(([^)]+)\)/i);
             if(!m)continue;
             const[lng,lat]=m[1].trim().split(/\s+/).map(Number);
             if(isNaN(lat)||isNaN(lng))continue;
-            const marker=L.circleMarker([lat,lng],{
-              radius:9,color:'#fff',weight:2,
-              fillColor:'#FF9500',fillOpacity:1
-            });
-            // Baustellen-Icon als Div-Overlay
             const icon=L.divIcon({
-              html:'<div style="font-size:16px;line-height:1;margin-top:-8px;margin-left:-8px">🚧</div>',
-              className:'',iconSize:[16,16]
+              html:'<div style="font-size:20px;filter:drop-shadow(0 1px 3px rgba(0,0,0,.5))">🚧</div>',
+              className:'',iconSize:[24,24],iconAnchor:[12,12]
             });
-            const mk=L.marker([lat,lng],{icon});
-            mk.bindPopup(popup);
-            baustellenLayer.addLayer(mk);
-            totalCount++;
+            L.marker([lat,lng],{icon}).bindPopup(popup).addTo(baustellenLayer);
+            rowCount++;totalCount++;
           }
         }
+        console.log(`[Baustellen ${ds.type}] ${rowCount} Features gezeichnet`);
         loaded=true;
         break;
+
       }catch(e){
-        console.warn(`[Baustellen ${ds.type}] Fehler:`,e.message);
+        console.warn(`[Baustellen ${ds.type}] ${urlLabel} Fehler:`,e.message);
       }
     }
-    if(!loaded)console.warn(`[Baustellen] ${ds.typeName} nicht ladbar`);
+    if(!loaded){
+      console.error(`[Baustellen] ${ds.typeName} komplett fehlgeschlagen`);
+    }
   }
 
   baustellenLayer.addTo(map);
-  document.getElementById('baustellenVal').textContent=
-    totalCount>0?`${totalCount} aktiv (OGD Wien)`:'Keine im Bezirk';
-  if(totalCount>0)showToast(`🚧 ${totalCount} Baustellen/Sperren im Bezirk`,'info');
+  const status=totalCount>0?`${totalCount} aktiv (OGD Wien)`:'Keine/nicht ladbar';
+  document.getElementById('baustellenVal').textContent=status;
+  if(totalCount>0)showToast(`🚧 ${totalCount} Baustellen/Sperren gefunden`,'info');
+  else showToast('ℹ️ Keine Baustellen im Bezirk (oder Daten nicht ladbar)','info');
 }
 
 function placeMarker(lat,lng,acc){
