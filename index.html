@@ -1,4 +1,4 @@
-<!-- Version 4.9 – 14./15. + Stadthallenzone als separate Auswahlmöglichkeit -->
+<!-- Version 4.10 – 14./15. + Stadthallenzone als separate Auswahlmöglichkeit -->
 <!DOCTYPE html>
 <html lang="de">
 <head>
@@ -204,7 +204,7 @@ header{display:flex;align-items:center;justify-content:space-between;padding:10p
     <button class="sheet-btn" onclick="requestNotifications()" style="background:linear-gradient(135deg,#ff1f35,#007AFF);color:#fff;flex:1">🔔 Benachrichtigungen</button>
     <button class="sheet-btn" onclick="clearSavedPos()" style="background:var(--surface2);color:var(--red);border:1px solid var(--border);flex:1">🗑 Cache löschen</button>
   </div>
-  <div style="padding:16px 0 4px;font-size:10px;color:var(--muted);font-family:var(--font-m)">Version 4.9 – OGD Wien · 14/15 + Stadthallenzone</div>
+  <div style="padding:16px 0 4px;font-size:10px;color:var(--muted);font-family:var(--font-m)">Version 4.10 – OGD Wien · 14/15 + Stadthallenzone</div>
 </div>
 
 <div class="toast" id="toast"></div>
@@ -212,16 +212,44 @@ header{display:flex;align-items:center;justify-content:space-between;padding:10p
 
 <script>
 const STORAGE={BEZIRK:'pp_bezirk',POS:'pp_lastpos',ONBOARDED:'pp_onboarded'};
-const BEZIRKE=[
-  [1,'Innere Stadt'],[2,'Leopoldstadt'],[3,'Landstraße'],[4,'Wieden'],
-  [5,'Margareten'],[6,'Mariahilf'],[7,'Neubau'],[8,'Josefstadt'],
-  [9,'Alsergrund'],[10,'Favoriten'],[11,'Simmering'],[12,'Meidling'],
-  [13,'Hietzing'],[14,'Penzing'],[15,'Rudolfsheim-Fünfhaus'],[16,'Ottakring'],
-  [17,'Hernals'],[18,'Währing'],[19,'Döbling'],[20,'Brigittenau'],
-  [21,'Floridsdorf'],[22,'Donaustadt'],[23,'Liesing'],
-  // Sonderzone: 14./15. Bezirk inkl. Stadthallenzone (eigene Wien-Auswahlmöglichkeit)
-  ['1415S','14./15. + Stadthalle']
+
+// Grid-Einträge für Bezirkswahl – kombinierte Zonen als eigene Einträge
+// key = was gespeichert/verwendet wird, nr1/nr2 = Bezirksnummern, name = Anzeige
+const GRID_ENTRIES=[
+  {key:1,  nr:[1],     label:'1',    name:'Innere Stadt'},
+  {key:2,  nr:[2],     label:'2',    name:'Leopoldstadt'},
+  {key:3,  nr:[3],     label:'3',    name:'Landstraße'},
+  {key:'45', nr:[4,5], label:'4+5',  name:'Wieden &\nMargareten', combined:true},
+  {key:6,  nr:[6],     label:'6',    name:'Mariahilf'},
+  {key:7,  nr:[7],     label:'7',    name:'Neubau'},
+  {key:8,  nr:[8],     label:'8',    name:'Josefstadt'},
+  {key:9,  nr:[9],     label:'9',    name:'Alsergrund'},
+  {key:10, nr:[10],    label:'10',   name:'Favoriten'},
+  {key:11, nr:[11],    label:'11',   name:'Simmering'},
+  {key:12, nr:[12],    label:'12',   name:'Meidling'},
+  {key:13, nr:[13],    label:'13',   name:'Hietzing'},
+  {key:'1415', nr:[14,15], label:'14+15', name:'Penzing &\nRudolfsheim', combined:true},
+  {key:16, nr:[16],    label:'16',   name:'Ottakring'},
+  {key:17, nr:[17],    label:'17',   name:'Hernals'},
+  {key:18, nr:[18],    label:'18',   name:'Währing'},
+  {key:19, nr:[19],    label:'19',   name:'Döbling'},
+  {key:20, nr:[20],    label:'20',   name:'Brigittenau'},
+  {key:21, nr:[21],    label:'21',   name:'Floridsdorf'},
+  {key:22, nr:[22],    label:'22',   name:'Donaustadt'},
+  {key:23, nr:[23],    label:'23',   name:'Liesing'},
+  {key:'1415S', nr:[14,15], label:'🏟️', name:'14./15. +\nStadthalle', special:true},
 ];
+
+// Rückwärts-Lookup: Bezirksnummer → Grid-Key (für checkPoint etc.)
+const BEZIRK_TO_KEY={4:'45',5:'45',14:'1415',15:'1415'};
+function bezToKey(nr){return BEZIRK_TO_KEY[parseInt(nr)]||parseInt(nr);}
+
+// Gibt Bezirksnummern-Array für einen Key zurück
+function getZoneBezirke(key){
+  const e=GRID_ENTRIES.find(e=>String(e.key)===String(key));
+  return e?e.nr:[parseInt(key)];
+}
+
 const PROXIES=[
   u=>`https://corsproxy.io/?url=${encodeURIComponent(u)}`,
   u=>`https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`,
@@ -229,27 +257,24 @@ const PROXIES=[
 ];
 const WFS='https://data.wien.gv.at/daten/geo?service=WFS&request=GetFeature&version=1.1.0&outputFormat=application/json&srsName=EPSG:4326';
 
-// Offiziell zusammengefasste Parkpickerl-Gültigkeitsbereiche (wien.gv.at):
-// 4.+5. Bezirk gemeinsam | 14.+15. Bezirk gemeinsam | 1415S = 14+15 inkl. Stadthallenzone
-// Quelle: https://www.wien.gv.at/amtshelfer/verkehr/parken/kurzparkzone/parkpickerl.html
-const PICKERL_ZONEN={
-  4:[4,5], 5:[4,5],
-  14:[14,15], 15:[14,15],
-  '1415S':[14,15]  // bezirke gleich wie 14/15, aber Label/Info anders
-};
-// Metadata für Sonderzonen
+// Zone-Metadata für Sonderzonen
 const ZONE_META={
+  '45':{
+    label:'4. & 5. Bezirk',
+    short:'4. & 5. Bezirk',
+    info:'Wieden + Margareten – gemeinsame Pickerlzone'
+  },
+  '1415':{
+    label:'14. & 15. Bezirk',
+    short:'14. & 15. Bezirk',
+    info:'Penzing + Rudolfsheim-Fünfhaus – gemeinsame Pickerlzone'
+  },
   '1415S':{
     label:'14. & 15. Bezirk + Stadthallenzone',
     short:'14./15. + Stadthalle',
     info:'Gilt in 14., 15. Bezirk inkl. Bereich Wiener Stadthalle (Mo–Fr 9–22 Uhr, Sa/So/Feiertag 18–22 Uhr)'
   }
 };
-
-function getZoneBezirke(nr){
-  const k=String(nr);
-  return PICKERL_ZONEN[k]||PICKERL_ZONEN[parseInt(nr)]||[parseInt(nr)];
-}
 
 let map,userMarker,highlightLayer,zoneLayer,ladezonenLayer,anrainerLayer;
 let selectedBezirk=null,activeSheet=null,swipeStartY=0;
@@ -258,18 +283,23 @@ let watchId=null,lastLat=null,lastLng=null,followMode=true;
 // ── Onboarding ──
 function buildGrid(id,onSelect){
   const g=document.getElementById(id);g.innerHTML='';
-  BEZIRKE.forEach(([nr,name])=>{
+  GRID_ENTRIES.forEach(entry=>{
     const b=document.createElement('button');
-    b.className='bez-option';b.dataset.nr=nr;
-    const isSpecial=(String(nr)==='1415S');
-    if(isSpecial){
-      // Sonderzone: volle Breite, eigenes Styling
-      b.style.cssText='grid-column:1/-1;background:rgba(175,82,222,.08);border-color:rgba(175,82,222,.3);font-size:10px;padding:8px';
-      b.innerHTML=`<span class="bez-nr" style="font-size:13px">🅿️</span>${name}`;
+    b.className='bez-option';
+    b.dataset.nr=String(entry.key);
+
+    if(entry.special){
+      // 14./15. + Stadthalle: volle Breite (alle 3 Spalten), goldener Rand
+      b.style.cssText='grid-column:1/-1;background:rgba(240,200,68,.08);border-color:rgba(240,200,68,.5);color:#f0c844;padding:10px 12px';
+      b.innerHTML=`<span class="bez-nr" style="font-size:16px">🏟️</span>14./15. Bezirk + Stadthallenzone`;
+    } else if(entry.combined){
+      // 4+5 oder 14+15: 2 Spalten breit, goldener Rand
+      b.style.cssText='grid-column:span 2;background:rgba(240,200,68,.06);border-color:rgba(240,200,68,.35)';
+      b.innerHTML=`<span class="bez-nr" style="font-size:16px">${entry.label}</span>${entry.name.replace('\n','<br>')}`;
     } else {
-      b.innerHTML=`<span class="bez-nr">${nr}</span>${name}`;
+      b.innerHTML=`<span class="bez-nr">${entry.label}</span>${entry.name}`;
     }
-    b.onclick=()=>onSelect(nr,b,g);
+    b.onclick=()=>onSelect(String(entry.key),b,g);
     g.appendChild(b);
   });
 }
@@ -290,16 +320,15 @@ function initOnboarding(){
   const saved=localStorage.getItem(STORAGE.BEZIRK);
   if(onboarded&&saved){
     document.getElementById('onboarding').classList.add('hidden');
-    // saved kann '1415S' oder eine Zahl als String sein
-    const savedKey=isNaN(saved)?saved:parseInt(saved);
-    selectBezirk(savedKey,false);
+    // saved ist immer ein String-Key (z.B. '7', '45', '1415', '1415S')
+    selectBezirk(saved,false);
     const pos=localStorage.getItem(STORAGE.POS);
     if(pos){try{const{lat,lng}=JSON.parse(pos);placeMarker(lat,lng,null);map.setView([lat,lng],15);}catch(e){}}
   }
 }
 
 function finishOnboarding(){
-  const bez=parseInt(document.getElementById('obContinue').dataset.bez);
+  const bez=document.getElementById('obContinue').dataset.bez;
   if(!bez)return;
   localStorage.setItem(STORAGE.ONBOARDED,'1');
   selectBezirk(bez);
@@ -308,34 +337,38 @@ function finishOnboarding(){
 }
 
 // ── Bezirk ──
-function selectBezirk(nr,hl=true){
-  selectedBezirk=nr;
-  try{localStorage.setItem(STORAGE.BEZIRK,String(nr));}catch(e){}
-  const key=String(nr);
-  const meta=ZONE_META[key];
-  const zoneBezirke=getZoneBezirke(nr);
+function selectBezirk(key,hl=true){
+  key=String(key);
+  selectedBezirk=key;
+  try{localStorage.setItem(STORAGE.BEZIRK,key);}catch(e){}
 
-  let label,detailLabel;
+  const entry=GRID_ENTRIES.find(e=>String(e.key)===key);
+  const meta=ZONE_META[key];
+
+  let headerLabel, detailLabel;
   if(meta){
-    // Sonderzone z.B. 1415S
-    label=meta.short;
+    headerLabel=meta.short;
     detailLabel=meta.label;
-  } else if(zoneBezirke.length>1){
-    label=zoneBezirke.map(b=>`${b}.`).join(' & ')+' Bezirk';
-    detailLabel=zoneBezirke.map(b=>`${b}. Bezirk`).join(' + ');
+  } else if(entry){
+    headerLabel=entry.nr.length>1
+      ? entry.nr.map(n=>`${n}.`).join(' & ')+' Bezirk'
+      : `${entry.label}. ${entry.name}`;
+    detailLabel=entry.nr.length>1
+      ? entry.nr.map(n=>`${n}. Bezirk`).join(' + ')
+      : `${entry.label}. Bezirk`;
   } else {
-    const name=BEZIRKE.find(b=>String(b[0])===key)?.[1]||'';
-    label=`${nr}. ${name}`;
-    detailLabel=`${nr}. Bezirk`;
+    headerLabel=`${key}. Bezirk`;
+    detailLabel=`${key}. Bezirk`;
   }
 
-  document.getElementById('bezirkLabel').textContent=label;
+  document.getElementById('bezirkLabel').textContent=headerLabel;
   document.getElementById('bezirkBtn').classList.add('selected');
   document.getElementById('savedBezirkVal').textContent=detailLabel;
+  // Selektiere korrekten Button im Grid
   document.querySelectorAll('#bezirkGridSheet .bez-option').forEach(b=>
-    b.classList.toggle('selected',String(b.dataset.nr)===key)
+    b.classList.toggle('selected', b.dataset.nr===key)
   );
-  if(hl)highlightBezirk(nr);
+  if(hl)highlightBezirk(key);
   if(watchId!==null&&lastLat!==null){checkPoint(lastLat,lastLng);}
   else{setTimeout(startTracking,500);}
 }
@@ -377,26 +410,26 @@ async function loadRealBezirksgrenzen(){
   showToast('Bezirksgrenzen konnten nicht geladen werden ⚠️','error');
 }
 
-function highlightBezirk(bez){
+function highlightBezirk(key){
+  key=String(key);
   if(highlightLayer){map.removeLayer(highlightLayer);highlightLayer=null;}
   if(zoneLayer){map.removeLayer(zoneLayer);zoneLayer=null;}
   if(ladezonenLayer){map.removeLayer(ladezonenLayer);ladezonenLayer=null;}
   if(anrainerLayer){map.removeLayer(anrainerLayer);anrainerLayer=null;}
   if(!BEZIRKE_GEO){showToast('Bezirksgrenzen laden…','info');return;}
 
-  const key=String(bez);
   const meta=ZONE_META[key];
+  const zoneBezirke=getZoneBezirke(key);
 
-  // Alle Bezirke dieser Pickerlzone (z.B. [4,5] oder [14,15])
-  const zoneBezirke=getZoneBezirke(bez);
   const features=zoneBezirke
     .map(b=>BEZIRKE_GEO.features.find(f=>parseInt(f.properties.BEZNR)===b))
     .filter(Boolean);
 
-  if(!features.length){showToast(`Bezirk ${bez} nicht gefunden ⚠️`,'error');return;}
+  if(!features.length){showToast(`Bezirk ${key} nicht gefunden ⚠️`,'error');return;}
 
-  // Stadthallenzone: leicht anders einfärben (lila Rand)
-  const hlStyle=meta
+  // Stadthallenzone: lila Rand, sonst gold
+  const isStadthalle=(key==='1415S');
+  const hlStyle=isStadthalle
     ? {color:'#AF52DE',weight:2.5,fillColor:'#AF52DE',fillOpacity:.1,opacity:.85}
     : {color:'#f0c844',weight:2.5,fillColor:'#f0c844',fillOpacity:.1,opacity:.85};
 
@@ -407,13 +440,13 @@ function highlightBezirk(bez){
 
   map.fitBounds(highlightLayer.getBounds(),{padding:[60,60],maxZoom:13,animate:true});
 
-  // Info-Toast für Sonderzone
-  if(meta)showToast(`🏟️ ${meta.info}`,'info');
+  if(meta&&isStadthalle)showToast(`🏟️ ${meta.info}`,'info');
 
-  loadZones(bez,features);
+  loadZones(key,features);
 }
 
-async function loadZones(bez,bezFeatures){
+async function loadZones(key,bezFeatures){
+  key=String(key);
   // Kombinierte BBOX über alle Bezirke der Zone
   const combinedLayer=L.geoJSON({type:'FeatureCollection',features:bezFeatures});
   const b=combinedLayer.getBounds();
@@ -433,7 +466,7 @@ async function loadZones(bez,bezFeatures){
 
   // ── Ladezonen – blaue Linien via OGD Wien CSV ──
   // Für alle Bezirke der Zone laden (z.B. 4+5 oder 14+15)
-  const zoneBezirke=getZoneBezirke(bez);
+  const zoneBezirke=getZoneBezirke(key);
   await loadLadezonen(zoneBezirke);
 
   // ── AnrainerInnenparkplätze – lila Linien via PARKENANRAINEROGD ──
