@@ -237,7 +237,6 @@ const GRID_ENTRIES=[
   {key:21, nr:[21],    label:'21',   name:'Floridsdorf'},
   {key:22, nr:[22],    label:'22',   name:'Donaustadt'},
   {key:23, nr:[23],    label:'23',   name:'Liesing'},
-  {key:'1415S', nr:[14,15], label:'🏟️', name:'14./15. +\nStadthalle', special:true},
 ];
 
 // Rückwärts-Lookup: Bezirksnummer → Grid-Key (für checkPoint etc.)
@@ -268,11 +267,6 @@ const ZONE_META={
     label:'14. & 15. Bezirk',
     short:'14. & 15. Bezirk',
     info:'Penzing + Rudolfsheim-Fünfhaus – gemeinsame Pickerlzone'
-  },
-  '1415S':{
-    label:'14. & 15. Bezirk + Stadthallenzone',
-    short:'14./15. + Stadthalle',
-    info:'Gilt in 14., 15. Bezirk inkl. Bereich Wiener Stadthalle (Mo–Fr 9–22 Uhr, Sa/So/Feiertag 18–22 Uhr)'
   }
 };
 
@@ -320,7 +314,7 @@ function initOnboarding(){
   const saved=localStorage.getItem(STORAGE.BEZIRK);
   if(onboarded&&saved){
     document.getElementById('onboarding').classList.add('hidden');
-    // saved ist immer ein String-Key (z.B. '7', '45', '1415', '1415S')
+    // saved ist immer ein String-Key (z.B. '7', '45', '1415')
     selectBezirk(saved,false);
     const pos=localStorage.getItem(STORAGE.POS);
     if(pos){try{const{lat,lng}=JSON.parse(pos);placeMarker(lat,lng,null);map.setView([lat,lng],15);}catch(e){}}
@@ -427,30 +421,13 @@ function highlightBezirk(key){
 
   if(!features.length){showToast(`Bezirk ${key} nicht gefunden ⚠️`,'error');return;}
 
-  // Immer gelb – auch für Sonderzone 1415S
+  // Immer gelb
   highlightLayer=L.geoJSON(
     {type:'FeatureCollection',features},
     {style:{color:'#f0c844',weight:2.5,fillColor:'#f0c844',fillOpacity:.1,opacity:.85}}
   ).addTo(map);
 
   map.fitBounds(highlightLayer.getBounds(),{padding:[60,60],maxZoom:13,animate:true});
-
-  // Stadthallenzone: Sonder-Marker bei der Stadthalle + Toast
-  if(key==='1415S'){
-    // Wiener Stadthalle: 48.2013, 16.3394
-    const stIcon=L.divIcon({
-      className:'',
-      html:`<div style="background:#FF9500;color:#fff;padding:4px 8px;border-radius:20px;font-size:11px;font-weight:700;white-space:nowrap;box-shadow:0 2px 8px rgba(0,0,0,.3)">🏟️ +Stadthallenzone</div>`,
-      iconAnchor:[70,10]
-    });
-    const stMarker=L.marker([48.2013,16.3394],{icon:stIcon,interactive:false});
-    stMarker.addTo(map);
-    // Marker zur highlightLayer hinzufügen damit er beim nächsten reset entfernt wird
-    highlightLayer.options._stMarker=stMarker;
-    const origRemove=highlightLayer.remove.bind(highlightLayer);
-    highlightLayer.remove=()=>{map.removeLayer(stMarker);origRemove();};
-    showToast('🏟️ Gilt in 14.+15. Bezirk inkl. Stadthallenzone (Mo–Fr 9–22 Uhr, Sa/So/Ft 18–22 Uhr)','info');
-  }
 
   loadZones(key,features);
 }
