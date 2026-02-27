@@ -427,20 +427,30 @@ function highlightBezirk(key){
 
   if(!features.length){showToast(`Bezirk ${key} nicht gefunden ⚠️`,'error');return;}
 
-  // Stadthallenzone: lila Rand, sonst gold
-  const isStadthalle=(key==='1415S');
-  const hlStyle=isStadthalle
-    ? {color:'#AF52DE',weight:2.5,fillColor:'#AF52DE',fillOpacity:.1,opacity:.85}
-    : {color:'#f0c844',weight:2.5,fillColor:'#f0c844',fillOpacity:.1,opacity:.85};
-
+  // Immer gelb – auch für Sonderzone 1415S
   highlightLayer=L.geoJSON(
     {type:'FeatureCollection',features},
-    {style:hlStyle}
+    {style:{color:'#f0c844',weight:2.5,fillColor:'#f0c844',fillOpacity:.1,opacity:.85}}
   ).addTo(map);
 
   map.fitBounds(highlightLayer.getBounds(),{padding:[60,60],maxZoom:13,animate:true});
 
-  if(meta&&isStadthalle)showToast(`🏟️ ${meta.info}`,'info');
+  // Stadthallenzone: Sonder-Marker bei der Stadthalle + Toast
+  if(key==='1415S'){
+    // Wiener Stadthalle: 48.2013, 16.3394
+    const stIcon=L.divIcon({
+      className:'',
+      html:`<div style="background:#FF9500;color:#fff;padding:4px 8px;border-radius:20px;font-size:11px;font-weight:700;white-space:nowrap;box-shadow:0 2px 8px rgba(0,0,0,.3)">🏟️ +Stadthallenzone</div>`,
+      iconAnchor:[70,10]
+    });
+    const stMarker=L.marker([48.2013,16.3394],{icon:stIcon,interactive:false});
+    stMarker.addTo(map);
+    // Marker zur highlightLayer hinzufügen damit er beim nächsten reset entfernt wird
+    highlightLayer.options._stMarker=stMarker;
+    const origRemove=highlightLayer.remove.bind(highlightLayer);
+    highlightLayer.remove=()=>{map.removeLayer(stMarker);origRemove();};
+    showToast('🏟️ Gilt in 14.+15. Bezirk inkl. Stadthallenzone (Mo–Fr 9–22 Uhr, Sa/So/Ft 18–22 Uhr)','info');
+  }
 
   loadZones(key,features);
 }
