@@ -7,16 +7,16 @@
 <meta name="theme-color" content="#007AFF">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Parkpickerl">
+<meta name="apple-mobile-web-app-title" content="Parktracker">
 <meta name="description" content="Prüfe sofort ob dein Wiener Parkpickerl an diesem Ort gilt – kostenlos, offline-fähig.">
 <meta name="robots" content="index, follow">
-<meta property="og:title" content="Parkpickerl Checker Wien">
+<meta property="og:title" content="Parktracker - Wien">
 <meta property="og:description" content="Prüfe ob dein Parkpickerl hier gilt – schnell, gratis, offline-fähig.">
 <meta property="og:type" content="website">
 <meta property="og:locale" content="de_AT">
 <link rel="manifest" href="manifest.json">
 <link rel="apple-touch-icon" href="icon-192.png">
-<title>Parkpickerl Checker – Wien</title>
+<title>Parktracker – Wien</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
@@ -145,7 +145,7 @@ header{display:flex;align-items:center;justify-content:space-between;padding:10p
       <svg viewBox="0 0 24 24"><path d="M6 3h7a6 6 0 0 1 0 12H9v6H6V3zm3 3v6h4a3 3 0 0 0 0-6H9z"/></svg>
     </div>
     <div class="logo-text">
-      <h1>Parkpickerl</h1>
+      <h1>Parktracker</h1>
       <span>Wien · Kurzparkzonen</span>
     </div>
   </div>
@@ -784,7 +784,7 @@ function clearSavedPos(){try{localStorage.removeItem(STORAGE.POS);}catch(e){}sho
 async function requestNotifications(){
   if(!('Notification'in window)){showToast('Nicht unterstützt','error');return;}
   const p=await Notification.requestPermission();
-  if(p==='granted'){document.getElementById('notifStatusVal').textContent='Aktiv ✅';showToast('Benachrichtigungen aktiv!','success');new Notification('Parkpickerl Checker',{body:'Aktiv!',icon:'/icon-192.png'});}
+  if(p==='granted'){document.getElementById('notifStatusVal').textContent='Aktiv ✅';showToast('Benachrichtigungen aktiv!','success');new Notification('Parktracker',{body:'Aktiv!',icon:'/icon-192.png'});}
   else{document.getElementById('notifStatusVal').textContent='Abgelehnt';showToast('Abgelehnt','error');}
 }
 function sendNotif(title,body){if(Notification?.permission==='granted')new Notification(title,{body,icon:'/icon-192.png'});}
