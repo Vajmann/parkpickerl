@@ -73,8 +73,8 @@ header{display:flex;align-items:center;justify-content:space-between;padding:10p
 .legend-line{width:20px;height:3px;border-radius:2px;flex-shrink:0}
 #onboarding{position:fixed;inset:0;z-index:2000;background:linear-gradient(160deg,#150002 0%,#0f0f0f 60%);display:flex;flex-direction:column;padding:calc(var(--safe-top) + 40px) 24px calc(var(--safe-bot) + 24px);transition:opacity .4s,transform .4s}
 #onboarding.hidden{opacity:0;transform:scale(.96);pointer-events:none}
-.ob-logo{width:80px;height:80px;background:#f0c844;border-radius:22px;display:flex;align-items:center;justify-content:center;margin-bottom:28px;box-shadow:0 12px 40px rgba(240,200,68,.45),inset 0 1px 0 rgba(255,255,255,.2)}
-.ob-logo-p{font-size:42px;font-weight:900;color:#000;font-family:var(--font-d);line-height:1;letter-spacing:-2px}
+.ob-logo{width:80px;height:80px;background:#f0c844;border-radius:22px;display:flex;align-items:center;justify-content:center;margin-bottom:28px;box-shadow:0 12px 40px rgba(240,200,68,.5),0 4px 16px rgba(0,0,0,.4)}
+.ob-logo-p{font-size:46px;font-weight:900;color:#1C1C1E;font-family:-apple-system,'SF Pro Display',sans-serif;line-height:1;letter-spacing:-2px}
 .ob-title{font-size:30px;font-weight:800;letter-spacing:-1px;margin-bottom:8px;line-height:1.2;color:#fff}
 .ob-title span{color:var(--accent)}
 .ob-sub{font-size:14px;color:var(--muted);font-family:var(--font-m);line-height:1.6;margin-bottom:28px}
@@ -85,8 +85,9 @@ header{display:flex;align-items:center;justify-content:space-between;padding:10p
 .bez-option:active{transform:scale(.95)}
 .bez-option.selected{border-color:var(--accent);background:rgba(226,0,26,.18);color:#ff8090}
 .bez-nr{font-size:18px;font-weight:800;display:block;margin-bottom:2px}
-.ob-continue{margin-top:16px;background:#f0c844;color:#000;border:none;border-radius:14px;padding:16px;font-family:var(--font-d);font-weight:800;font-size:16px;cursor:pointer;width:100%;flex-shrink:0;opacity:.4;pointer-events:none;transition:opacity .2s;box-shadow:0 4px 20px rgba(240,200,68,.4)}
+.ob-continue{margin-top:16px;background:#f0c844;color:#1C1C1E;border:none;border-radius:14px;padding:16px;font-family:var(--font-d);font-weight:900;font-size:17px;cursor:pointer;width:100%;flex-shrink:0;opacity:.35;pointer-events:none;transition:opacity .2s,transform .15s;box-shadow:0 4px 20px rgba(240,200,68,.5);letter-spacing:-.3px}
 .ob-continue.active{opacity:1;pointer-events:auto}
+.ob-continue.active:active{transform:scale(.97)}
 .sheet-overlay{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:900;opacity:0;pointer-events:none;transition:opacity .3s}
 .sheet-overlay.visible{opacity:1;pointer-events:auto}
 .bottom-sheet{position:fixed;bottom:0;left:0;right:0;background:var(--surface);border-top:1px solid var(--border);border-radius:24px 24px 0 0;padding:0 20px calc(20px + var(--safe-bot));transform:translateY(100%);transition:transform .35s cubic-bezier(.4,0,.2,1);z-index:1000;max-height:82vh;overflow-y:auto}
@@ -253,8 +254,64 @@ function getZoneBezirke(key){
 const PROXIES=[
   u=>`https://corsproxy.io/?url=${encodeURIComponent(u)}`,
   u=>`https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`,
+  u=>`https://corsproxy.io/?url=${encodeURIComponent(u)}&t=${Date.now()}`,
+  u=>`https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(u)}`,
+  u=>`https://api.allorigins.win/get?url=${encodeURIComponent(u)}`,
   u=>`https://thingproxy.freeboard.io/fetch/${u}`
 ];
+
+// Robuster Fetch: versucht alle Proxies PARALLEL, nimmt den ersten der antwortet
+async function robustFetch(ogdUrl, timeoutMs=15000){
+  // Erst direkt versuchen (funktioniert manchmal ohne CORS-Problem)
+  const directAttempt = async()=>{
+    try{
+      const ctrl=new AbortController();
+      const t=setTimeout(()=>ctrl.abort(),8000);
+      const r=await fetch(ogdUrl,{signal:ctrl.signal});
+      clearTimeout(t);
+      if(!r.ok)throw 0;
+      const txt=await r.text();
+      if(txt&&txt.length>10&&!txt.trim().startsWith('<'))return txt;
+      throw 0;
+    }catch(e){throw e;}
+  };
+
+  // Einen Proxy versuchen
+  const proxyAttempt = async(proxyFn)=>{
+    const ctrl=new AbortController();
+    const t=setTimeout(()=>ctrl.abort(),timeoutMs);
+    try{
+      const r=await fetch(proxyFn(ogdUrl),{signal:ctrl.signal});
+      clearTimeout(t);
+      if(!r.ok)throw new Error('HTTP '+r.status);
+      let txt=await r.text();
+      // allorigins /get gibt JSON mit .contents zurück
+      if(txt&&txt.trim().startsWith('{"contents"')){
+        try{txt=JSON.parse(txt).contents;}catch(e){}
+      }
+      if(!txt||txt.trim().length<10)throw new Error('Leer');
+      if(txt.trim().startsWith('<'))throw new Error('XML statt JSON/CSV');
+      return txt;
+    }catch(e){
+      clearTimeout(t);
+      throw e;
+    }
+  };
+
+  // Direkt + alle Proxies parallel – erster Erfolg gewinnt
+  const allAttempts=[directAttempt(), ...PROXIES.map(p=>proxyAttempt(p))];
+  const errors=[];
+  // Promise.any-Polyfill
+  return new Promise((resolve,reject)=>{
+    let settled=0;
+    allAttempts.forEach(p=>{
+      Promise.resolve(p).then(
+        val=>{ if(!settled){settled=1;resolve(val);} },
+        err=>{ errors.push(err);if(++settled===allAttempts.length)reject(new Error('Alle Proxies fehlgeschlagen')); }
+      );
+    });
+  });
+}
 const WFS='https://data.wien.gv.at/daten/geo?service=WFS&request=GetFeature&version=1.1.0&outputFormat=application/json&srsName=EPSG:4326';
 
 const ZONE_META={
@@ -357,15 +414,11 @@ function initMap(){
 
 async function loadRealBezirksgrenzen(){
   const ogdUrl='https://data.wien.gv.at/daten/geo?service=WFS&request=GetFeature&version=1.1.0&outputFormat=application/json&srsName=EPSG:4326&typeName=ogdwien:BEZIRKSGRENZEOGD';
-  const allUrls=[ogdUrl,...PROXIES.map(p=>p(ogdUrl))];
-  for(const url of allUrls){
+  for(let attempt=0;attempt<2;attempt++){
     try{
-      const ctrl=new AbortController();
-      const t=setTimeout(()=>ctrl.abort(),10000);
-      const res=await fetch(url,{signal:ctrl.signal});clearTimeout(t);
-      if(!res.ok)throw 0;
-      const data=await res.json();
-      if(!data.features||!data.features.length)throw 0;
+      const txt=await robustFetch(ogdUrl,18000);
+      const data=JSON.parse(txt);
+      if(!data.features||!data.features.length)throw new Error('Keine Features');
       BEZIRKE_GEO=data;
       BEZIRKE_GEO.features.forEach(f=>{
         const p=f.properties;
@@ -373,7 +426,10 @@ async function loadRealBezirksgrenzen(){
       });
       if(selectedBezirk)highlightBezirk(selectedBezirk);
       return;
-    }catch(e){console.warn('[Bezirke] Fehlgeschlagen:',url.substring(0,60));}
+    }catch(e){
+      console.warn('[Bezirke] Versuch',attempt+1,'fehlgeschlagen:',e.message);
+      if(attempt===0)await new Promise(r=>setTimeout(r,2000));
+    }
   }
   showToast('Bezirksgrenzen konnten nicht geladen werden ⚠️','error');
 }
@@ -423,21 +479,17 @@ async function loadLadezonen(bezirke){
   const filter=bezirke.length===1?`BEZIRK=${bezirke[0]}`:`BEZIRK+IN+(${bezirke.join(',')})`;
   const csvUrl=`https://data.wien.gv.at/daten/geo?service=WFS&request=GetFeature&version=1.1.0`
     +`&typeName=ogdwien:LADEZONENOGD&srsName=EPSG:4326&outputFormat=csv&CQL_FILTER=${filter}`;
-  const urls=[csvUrl,`https://corsproxy.io/?url=${encodeURIComponent(csvUrl)}`,`https://api.allorigins.win/raw?url=${encodeURIComponent(csvUrl)}`];
-  for(const url of urls){
+  for(let attempt=0;attempt<2;attempt++){
     try{
-      const ctrl=new AbortController();const t=setTimeout(()=>ctrl.abort(),20000);
-      const res=await fetch(url,{signal:ctrl.signal});clearTimeout(t);
-      if(!res.ok)continue;
-      const csv=await res.text();
-      if(!csv||csv.trim().length<10)continue;
-      const lines=csv.trim().split('\n');if(lines.length<2)continue;
+      const csv=await robustFetch(csvUrl,22000);
+      if(!csv||csv.trim().length<10)throw new Error('Leer');
+      const lines=csv.trim().split('\n');if(lines.length<2)throw new Error('Zu wenig Zeilen');
       const header=parseCSVLine(lines[0]);
       const shapeIdx=header.indexOf('SHAPE');
       const addrIdx=header.indexOf('ADRESSE');
       const zeitraumIdx=header.indexOf('ZEITRAUM');
       const ausnahmeIdx=header.indexOf('AUSNAHME_TXT');
-      if(shapeIdx<0)continue;
+      if(shapeIdx<0)throw new Error('Kein SHAPE');
       ladezonenLayer=L.layerGroup();let count=0;
       for(let i=1;i<lines.length;i++){
         if(!lines[i].trim())continue;
@@ -455,7 +507,10 @@ async function loadLadezonen(bezirke){
       if(count>0)showToast(`✅ ${count} Ladezonen geladen`,'success');
       else showToast('ℹ️ Keine Ladezonen in diesem Bezirk','info');
       return;
-    }catch(e){console.warn('[Ladezonen] Fehler:',e.message);}
+    }catch(e){
+      console.warn('[Ladezonen] Versuch',attempt+1,'fehlgeschlagen:',e.message);
+      if(attempt===0)await new Promise(r=>setTimeout(r,2000));
+    }
   }
   document.getElementById('ladezonenVal').textContent='Nicht verfügbar';
 }
@@ -466,22 +521,19 @@ async function loadAnrainerZonen(bez){
   document.getElementById('anrainerVal').textContent='lädt…';
   const bezNrs=new Set(bez.map(Number));
   const csvUrl='https://data.wien.gv.at/daten/geo?service=WFS&request=GetFeature&version=1.1.0&typeName=ogdwien:PARKENANRAINEROGD&srsName=EPSG:4326&outputFormat=csv';
-  const urls=[csvUrl,`https://corsproxy.io/?url=${encodeURIComponent(csvUrl)}`,`https://api.allorigins.win/raw?url=${encodeURIComponent(csvUrl)}`];
-  for(const url of urls){
+  for(let attempt=0;attempt<2;attempt++){
     try{
-      const ctrl=new AbortController();const t=setTimeout(()=>ctrl.abort(),30000);
-      const res=await fetch(url,{signal:ctrl.signal});clearTimeout(t);
-      if(!res.ok)continue;
-      const csv=await res.text();
-      if(!csv||csv.length<50||csv.trim().startsWith('<'))continue;
-      const lines=csv.trim().split('\n');if(lines.length<2){document.getElementById('anrainerVal').textContent='Keine Daten';return;}
+      const csv=await robustFetch(csvUrl,32000);
+      if(!csv||csv.length<50||csv.trim().startsWith('<'))throw new Error('Ungültige Antwort');
+      const lines=csv.trim().split('\n');
+      if(lines.length<2){document.getElementById('anrainerVal').textContent='Keine Daten';return;}
       const header=parseCSVLine(lines[0]);
       const shapeIdx=header.indexOf('SHAPE');
       const addrIdx=header.indexOf('ADRESSE');
       const ausnahmeIdx=header.indexOf('AUSNAHME_TXT');
       const stellplIdx=header.indexOf('STELLPL_ANZ');
       const infoIdx=header.indexOf('WEITERE_INF');
-      if(shapeIdx<0){console.warn('[Anrainer] Keine SHAPE-Spalte. Header:',header.join(', '));continue;}
+      if(shapeIdx<0)throw new Error('Keine SHAPE-Spalte');
       anrainerLayer=L.layerGroup();let count=0;
       for(let i=1;i<lines.length;i++){
         if(!lines[i].trim())continue;
@@ -505,7 +557,10 @@ async function loadAnrainerZonen(bez){
       if(count>0)showToast(`🅿️ ${count} Anrainerparkplätze geladen`,'success');
       else showToast('ℹ️ Keine Anrainerzonen in diesem Bezirk','info');
       return;
-    }catch(e){console.warn('[Anrainer] Fehler:',e.message);}
+    }catch(e){
+      console.warn('[Anrainer] Versuch',attempt+1,'fehlgeschlagen:',e.message);
+      if(attempt===0)await new Promise(r=>setTimeout(r,2000));
+    }
   }
   document.getElementById('anrainerVal').textContent='Nicht verfügbar';
 }
@@ -537,19 +592,27 @@ async function checkPoint(lat,lng){
   const bbox=`${lng-delta},${lat-delta},${lng+delta},${lat+delta},EPSG:4326`;
   const url=`${WFS}&typeName=ogdwien:PARKENBERECHTOGD&BBOX=${bbox}`;
   let data=null;
-  for(let i=0;i<PROXIES.length;i++){
+  // Erster Versuch: parallel über alle Proxies
+  try{
+    const txt=await robustFetch(url,15000);
+    const parsed=JSON.parse(txt);
+    if(parsed&&parsed.features){data=parsed;document.getElementById('apiStatusVal').textContent='OK';}
+  }catch(e){
+    // Zweiter Versuch nach 2 Sekunden (manchmal hilft Warten)
+    await new Promise(r=>setTimeout(r,2000));
     try{
-      const ctrl=new AbortController();const t=setTimeout(()=>ctrl.abort(),12000);
-      const res=await fetch(PROXIES[i](url),{signal:ctrl.signal});clearTimeout(t);
-      if(!res.ok)throw 0;const p=JSON.parse(await res.text());if(!p.features)throw 0;
-      data=p;document.getElementById('apiStatusVal').textContent=`OK (P${i+1})`;break;
-    }catch(e){}
+      const txt=await robustFetch(url,20000);
+      const parsed=JSON.parse(txt);
+      if(parsed&&parsed.features){data=parsed;document.getElementById('apiStatusVal').textContent='OK (Retry)';}
+    }catch(e2){
+      console.warn('[checkPoint] Alle Versuche fehlgeschlagen:',e2.message);
+    }
   }
   document.getElementById('lastCheckVal').textContent=new Date().toLocaleTimeString('de-AT');
   if(!data){
-    showResult('','🚫','Nicht erreichbar','API offline');
+    showResult('','🚫','Nicht erreichbar','Netzwerk prüfen & nochmal tippen');
     document.getElementById('apiStatusVal').textContent='fehlgeschlagen';
-    showToast('API nicht erreichbar','error');return;
+    showToast('Nochmal tippen – Verbindung prüfen','error');return;
   }
   const inZone=data.features.filter(f=>pointInFeature([lng,lat],f));
   if(!inZone.length){
