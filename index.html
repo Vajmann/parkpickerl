@@ -262,55 +262,32 @@ const PROXIES=[
 
 // Robuster Fetch: versucht alle Proxies PARALLEL, nimmt den ersten der antwortet
 async function robustFetch(ogdUrl, timeoutMs=15000){
-  // Erst direkt versuchen (funktioniert manchmal ohne CORS-Problem)
-  const directAttempt = async()=>{
+  // Alle URLs: direkt + 6 Proxies
+  const candidates=[
+    ogdUrl,
+    `https://corsproxy.io/?url=${encodeURIComponent(ogdUrl)}`,
+    `https://api.allorigins.win/raw?url=${encodeURIComponent(ogdUrl)}`,
+    `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(ogdUrl)}`,
+    `https://corsproxy.io/?url=${encodeURIComponent(ogdUrl)}&_=${Date.now()}`,
+    `https://api.allorigins.win/raw?url=${encodeURIComponent(ogdUrl)}&_=${Date.now()}`,
+    `https://thingproxy.freeboard.io/fetch/${ogdUrl}`
+  ];
+  for(const url of candidates){
     try{
       const ctrl=new AbortController();
-      const t=setTimeout(()=>ctrl.abort(),8000);
-      const r=await fetch(ogdUrl,{signal:ctrl.signal});
+      const t=setTimeout(()=>ctrl.abort(),timeoutMs);
+      const res=await fetch(url,{signal:ctrl.signal,cache:'no-cache'});
       clearTimeout(t);
-      if(!r.ok)throw 0;
-      const txt=await r.text();
-      if(txt&&txt.length>10&&!txt.trim().startsWith('<'))return txt;
-      throw 0;
-    }catch(e){throw e;}
-  };
-
-  // Einen Proxy versuchen
-  const proxyAttempt = async(proxyFn)=>{
-    const ctrl=new AbortController();
-    const t=setTimeout(()=>ctrl.abort(),timeoutMs);
-    try{
-      const r=await fetch(proxyFn(ogdUrl),{signal:ctrl.signal});
-      clearTimeout(t);
-      if(!r.ok)throw new Error('HTTP '+r.status);
-      let txt=await r.text();
-      // allorigins /get gibt JSON mit .contents zurück
-      if(txt&&txt.trim().startsWith('{"contents"')){
-        try{txt=JSON.parse(txt).contents;}catch(e){}
-      }
-      if(!txt||txt.trim().length<10)throw new Error('Leer');
-      if(txt.trim().startsWith('<'))throw new Error('XML statt JSON/CSV');
+      if(!res.ok)continue;
+      const txt=await res.text();
+      if(!txt||txt.trim().length<10)continue;
+      if(txt.trim().startsWith('<'))continue;
       return txt;
     }catch(e){
-      clearTimeout(t);
-      throw e;
+      // nächster Versuch
     }
-  };
-
-  // Direkt + alle Proxies parallel – erster Erfolg gewinnt
-  const allAttempts=[directAttempt(), ...PROXIES.map(p=>proxyAttempt(p))];
-  const errors=[];
-  // Promise.any-Polyfill
-  return new Promise((resolve,reject)=>{
-    let settled=0;
-    allAttempts.forEach(p=>{
-      Promise.resolve(p).then(
-        val=>{ if(!settled){settled=1;resolve(val);} },
-        err=>{ errors.push(err);if(++settled===allAttempts.length)reject(new Error('Alle Proxies fehlgeschlagen')); }
-      );
-    });
-  });
+  }
+  throw new Error('Alle URLs fehlgeschlagen für: '+ogdUrl.substring(0,80));
 }
 const WFS='https://data.wien.gv.at/daten/geo?service=WFS&request=GetFeature&version=1.1.0&outputFormat=application/json&srsName=EPSG:4326';
 
@@ -592,21 +569,15 @@ async function checkPoint(lat,lng){
   const bbox=`${lng-delta},${lat-delta},${lng+delta},${lat+delta},EPSG:4326`;
   const url=`${WFS}&typeName=ogdwien:PARKENBERECHTOGD&BBOX=${bbox}`;
   let data=null;
-  // Erster Versuch: parallel über alle Proxies
   try{
-    const txt=await robustFetch(url,15000);
+    const txt=await robustFetch(url,18000);
     const parsed=JSON.parse(txt);
-    if(parsed&&parsed.features){data=parsed;document.getElementById('apiStatusVal').textContent='OK';}
-  }catch(e){
-    // Zweiter Versuch nach 2 Sekunden (manchmal hilft Warten)
-    await new Promise(r=>setTimeout(r,2000));
-    try{
-      const txt=await robustFetch(url,20000);
-      const parsed=JSON.parse(txt);
-      if(parsed&&parsed.features){data=parsed;document.getElementById('apiStatusVal').textContent='OK (Retry)';}
-    }catch(e2){
-      console.warn('[checkPoint] Alle Versuche fehlgeschlagen:',e2.message);
+    if(parsed&&parsed.features){
+      data=parsed;
+      document.getElementById('apiStatusVal').textContent='OK';
     }
+  }catch(e){
+    console.warn('[checkPoint] fehlgeschlagen:',e.message);
   }
   document.getElementById('lastCheckVal').textContent=new Date().toLocaleTimeString('de-AT');
   if(!data){
