@@ -1,4 +1,4 @@
-<!-- Version 4.11 – checkPoint Zonen-Fix, Kurzparkstreifen CQL_FILTER -->
+<!-- Version 4.11 PWA – Homescreen-optimiert -->
 <!DOCTYPE html>
 <html lang="de">
 <head>
@@ -14,8 +14,9 @@
 <meta property="og:description" content="Prüfe ob dein Parkpickerl hier gilt – schnell, gratis, offline-fähig.">
 <meta property="og:type" content="website">
 <meta property="og:locale" content="de_AT">
-<link rel="manifest" href="manifest.json">
-<link rel="apple-touch-icon" href="icon-192.png">
+<!-- PWA: Manifest + Icon werden per JS inline gesetzt (keine externen Dateien nötig) -->
+<link rel="manifest" id="pwaManifest">
+<link rel="apple-touch-icon" id="appleTouchIcon">
 <title>Parktracker – Wien</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -112,6 +113,11 @@ header{display:flex;align-items:center;justify-content:space-between;padding:10p
 .btn-install{background:linear-gradient(135deg,#ff1f35,#007AFF);color:#fff;border:none;border-radius:8px;padding:7px 14px;font-weight:700;font-size:12px;cursor:pointer;font-family:var(--font-d)}
 .btn-dismiss{background:none;border:none;color:var(--muted);font-size:18px;cursor:pointer}
 .leaflet-bottom.leaflet-left{bottom:90px;}
+/* iOS Install Modal */
+#iosInstallModal{position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.72);display:flex;align-items:flex-end;justify-content:center}
+.ios-modal-box{background:#2C2C2E;border-radius:20px 20px 0 0;padding:24px 20px calc(28px + env(safe-area-inset-bottom,16px));width:100%;max-width:480px;color:#fff;font-family:var(--font-d)}
+.ios-step{display:flex;align-items:center;gap:12px;background:#3A3A3C;border-radius:12px;padding:12px 14px;font-size:14px;line-height:1.4;margin-bottom:10px}
+.ios-step-num{font-size:22px;font-weight:900;width:32px;text-align:center;flex-shrink:0;color:#f0c844;font-family:var(--font-d)}
 @media(prefers-color-scheme:light){
 :root{--bg:#F2F2F7;--surface:#fff;--surface2:#f0f0f2;--border:#e0e0e5;--text:#1a1a2e;--muted:#8888aa}
 #resultCard{background:rgba(255,255,255,.92)}
@@ -134,7 +140,7 @@ header{display:flex;align-items:center;justify-content:space-between;padding:10p
 
 <div id="offlineBanner">📵 Offline – Kartencache aktiv</div>
 <div id="installBanner">
-  <p>📱 <strong>App installieren</strong> – Homescreen & offline</p>
+  <p>📱 <strong>App installieren</strong> – Homescreen &amp; offline</p>
   <button class="btn-install" id="installBtn">Installieren</button>
   <button class="btn-dismiss" id="dismissBtn">✕</button>
 </div>
@@ -204,7 +210,7 @@ header{display:flex;align-items:center;justify-content:space-between;padding:10p
     <button class="sheet-btn" onclick="requestNotifications()" style="background:linear-gradient(135deg,#ff1f35,#007AFF);color:#fff;flex:1">🔔 Benachrichtigungen</button>
     <button class="sheet-btn" onclick="clearSavedPos()" style="background:var(--surface2);color:var(--red);border:1px solid var(--border);flex:1">🗑 Cache löschen</button>
   </div>
-  <div style="padding:16px 0 4px;font-size:10px;color:var(--muted);font-family:var(--font-m)">Version 4.11 – OGD Wien · Zonen-Fix, CQL_FILTER</div>
+  <div style="padding:16px 0 4px;font-size:10px;color:var(--muted);font-family:var(--font-m)">Version 4.11 PWA – OGD Wien · Homescreen-optimiert</div>
 </div>
 
 <div class="toast" id="toast"></div>
@@ -213,37 +219,32 @@ header{display:flex;align-items:center;justify-content:space-between;padding:10p
 <script>
 const STORAGE={BEZIRK:'pp_bezirk',POS:'pp_lastpos',ONBOARDED:'pp_onboarded'};
 
-// Grid-Einträge für Bezirkswahl – kombinierte Zonen als eigene Einträge
-// key = was gespeichert/verwendet wird, nr1/nr2 = Bezirksnummern, name = Anzeige
 const GRID_ENTRIES=[
-  {key:1,  nr:[1],     label:'1',    name:'Innere Stadt'},
-  {key:2,  nr:[2],     label:'2',    name:'Leopoldstadt'},
-  {key:3,  nr:[3],     label:'3',    name:'Landstraße'},
-  {key:'45', nr:[4,5], label:'4+5',  name:'Wieden &\nMargareten', combined:true},
-  {key:6,  nr:[6],     label:'6',    name:'Mariahilf'},
-  {key:7,  nr:[7],     label:'7',    name:'Neubau'},
-  {key:8,  nr:[8],     label:'8',    name:'Josefstadt'},
-  {key:9,  nr:[9],     label:'9',    name:'Alsergrund'},
-  {key:10, nr:[10],    label:'10',   name:'Favoriten'},
-  {key:11, nr:[11],    label:'11',   name:'Simmering'},
-  {key:12, nr:[12],    label:'12',   name:'Meidling'},
-  {key:13, nr:[13],    label:'13',   name:'Hietzing'},
+  {key:1,  nr:[1],      label:'1',     name:'Innere Stadt'},
+  {key:2,  nr:[2],      label:'2',     name:'Leopoldstadt'},
+  {key:3,  nr:[3],      label:'3',     name:'Landstraße'},
+  {key:'45', nr:[4,5],  label:'4+5',   name:'Wieden &\nMargareten', combined:true},
+  {key:6,  nr:[6],      label:'6',     name:'Mariahilf'},
+  {key:7,  nr:[7],      label:'7',     name:'Neubau'},
+  {key:8,  nr:[8],      label:'8',     name:'Josefstadt'},
+  {key:9,  nr:[9],      label:'9',     name:'Alsergrund'},
+  {key:10, nr:[10],     label:'10',    name:'Favoriten'},
+  {key:11, nr:[11],     label:'11',    name:'Simmering'},
+  {key:12, nr:[12],     label:'12',    name:'Meidling'},
+  {key:13, nr:[13],     label:'13',    name:'Hietzing'},
   {key:'1415', nr:[14,15], label:'14+15', name:'Penzing &\nRudolfsheim', combined:true},
-  {key:16, nr:[16],    label:'16',   name:'Ottakring'},
-  {key:17, nr:[17],    label:'17',   name:'Hernals'},
-  {key:18, nr:[18],    label:'18',   name:'Währing'},
-  {key:19, nr:[19],    label:'19',   name:'Döbling'},
-  {key:20, nr:[20],    label:'20',   name:'Brigittenau'},
-  {key:21, nr:[21],    label:'21',   name:'Floridsdorf'},
-  {key:22, nr:[22],    label:'22',   name:'Donaustadt'},
-  {key:23, nr:[23],    label:'23',   name:'Liesing'},
+  {key:16, nr:[16],     label:'16',    name:'Ottakring'},
+  {key:17, nr:[17],     label:'17',    name:'Hernals'},
+  {key:18, nr:[18],     label:'18',    name:'Währing'},
+  {key:19, nr:[19],     label:'19',    name:'Döbling'},
+  {key:20, nr:[20],     label:'20',    name:'Brigittenau'},
+  {key:21, nr:[21],     label:'21',    name:'Floridsdorf'},
+  {key:22, nr:[22],     label:'22',    name:'Donaustadt'},
+  {key:23, nr:[23],     label:'23',    name:'Liesing'},
 ];
 
-// Rückwärts-Lookup: Bezirksnummer → Grid-Key (für checkPoint etc.)
 const BEZIRK_TO_KEY={4:'45',5:'45',14:'1415',15:'1415'};
 function bezToKey(nr){return BEZIRK_TO_KEY[parseInt(nr)]||parseInt(nr);}
-
-// Gibt Bezirksnummern-Array für einen Key zurück
 function getZoneBezirke(key){
   const e=GRID_ENTRIES.find(e=>String(e.key)===String(key));
   return e?e.nr:[parseInt(key)];
@@ -256,18 +257,9 @@ const PROXIES=[
 ];
 const WFS='https://data.wien.gv.at/daten/geo?service=WFS&request=GetFeature&version=1.1.0&outputFormat=application/json&srsName=EPSG:4326';
 
-// Zone-Metadata für Sonderzonen
 const ZONE_META={
-  '45':{
-    label:'4. & 5. Bezirk',
-    short:'4. & 5. Bezirk',
-    info:'Wieden + Margareten – gemeinsame Pickerlzone'
-  },
-  '1415':{
-    label:'14. & 15. Bezirk',
-    short:'14. & 15. Bezirk',
-    info:'Penzing + Rudolfsheim-Fünfhaus – gemeinsame Pickerlzone'
-  }
+  '45':{label:'4. & 5. Bezirk',short:'4. & 5. Bezirk',info:'Wieden + Margareten – gemeinsame Pickerlzone'},
+  '1415':{label:'14. & 15. Bezirk',short:'14. & 15. Bezirk',info:'Penzing + Rudolfsheim-Fünfhaus – gemeinsame Pickerlzone'}
 };
 
 let map,userMarker,highlightLayer,zoneLayer,ladezonenLayer,anrainerLayer;
@@ -281,13 +273,7 @@ function buildGrid(id,onSelect){
     const b=document.createElement('button');
     b.className='bez-option';
     b.dataset.nr=String(entry.key);
-
-    if(entry.special){
-      // 14./15. + Stadthalle: volle Breite (alle 3 Spalten), goldener Rand
-      b.style.cssText='grid-column:1/-1;background:rgba(240,200,68,.08);border-color:rgba(240,200,68,.5);color:#f0c844;padding:10px 12px';
-      b.innerHTML=`<span class="bez-nr" style="font-size:16px">🏟️</span>14./15. Bezirk + Stadthallenzone`;
-    } else if(entry.combined){
-      // 4+5 oder 14+15: 2 Spalten breit, goldener Rand
+    if(entry.combined){
       b.style.cssText='grid-column:span 2;background:rgba(240,200,68,.06);border-color:rgba(240,200,68,.35)';
       b.innerHTML=`<span class="bez-nr" style="font-size:16px">${entry.label}</span>${entry.name.replace('\n','<br>')}`;
     } else {
@@ -314,7 +300,6 @@ function initOnboarding(){
   const saved=localStorage.getItem(STORAGE.BEZIRK);
   if(onboarded&&saved){
     document.getElementById('onboarding').classList.add('hidden');
-    // saved ist immer ein String-Key (z.B. '7', '45', '1415')
     selectBezirk(saved,false);
     const pos=localStorage.getItem(STORAGE.POS);
     if(pos){try{const{lat,lng}=JSON.parse(pos);placeMarker(lat,lng,null);map.setView([lat,lng],15);}catch(e){}}
@@ -335,32 +320,22 @@ function selectBezirk(key,hl=true){
   key=String(key);
   selectedBezirk=key;
   try{localStorage.setItem(STORAGE.BEZIRK,key);}catch(e){}
-
   const entry=GRID_ENTRIES.find(e=>String(e.key)===key);
   const meta=ZONE_META[key];
-
-  let headerLabel, detailLabel;
+  let headerLabel,detailLabel;
   if(meta){
-    headerLabel=meta.short;
-    detailLabel=meta.label;
+    headerLabel=meta.short;detailLabel=meta.label;
   } else if(entry){
-    headerLabel=entry.nr.length>1
-      ? entry.nr.map(n=>`${n}.`).join(' & ')+' Bezirk'
-      : `${entry.label}. ${entry.name}`;
-    detailLabel=entry.nr.length>1
-      ? entry.nr.map(n=>`${n}. Bezirk`).join(' + ')
-      : `${entry.label}. Bezirk`;
+    headerLabel=entry.nr.length>1?entry.nr.map(n=>`${n}.`).join(' & ')+' Bezirk':`${entry.label}. ${entry.name}`;
+    detailLabel=entry.nr.length>1?entry.nr.map(n=>`${n}. Bezirk`).join(' + '):`${entry.label}. Bezirk`;
   } else {
-    headerLabel=`${key}. Bezirk`;
-    detailLabel=`${key}. Bezirk`;
+    headerLabel=`${key}. Bezirk`;detailLabel=`${key}. Bezirk`;
   }
-
   document.getElementById('bezirkLabel').textContent=headerLabel;
   document.getElementById('bezirkBtn').classList.add('selected');
   document.getElementById('savedBezirkVal').textContent=detailLabel;
-  // Selektiere korrekten Button im Grid
   document.querySelectorAll('#bezirkGridSheet .bez-option').forEach(b=>
-    b.classList.toggle('selected', b.dataset.nr===key)
+    b.classList.toggle('selected',b.dataset.nr===key)
   );
   if(hl)highlightBezirk(key);
   if(watchId!==null&&lastLat!==null){checkPoint(lastLat,lastLng);}
@@ -387,8 +362,7 @@ async function loadRealBezirksgrenzen(){
     try{
       const ctrl=new AbortController();
       const t=setTimeout(()=>ctrl.abort(),10000);
-      const res=await fetch(url,{signal:ctrl.signal});
-      clearTimeout(t);
+      const res=await fetch(url,{signal:ctrl.signal});clearTimeout(t);
       if(!res.ok)throw 0;
       const data=await res.json();
       if(!data.features||!data.features.length)throw 0;
@@ -411,36 +385,24 @@ function highlightBezirk(key){
   if(ladezonenLayer){map.removeLayer(ladezonenLayer);ladezonenLayer=null;}
   if(anrainerLayer){map.removeLayer(anrainerLayer);anrainerLayer=null;}
   if(!BEZIRKE_GEO){showToast('Bezirksgrenzen laden…','info');return;}
-
-  const meta=ZONE_META[key];
   const zoneBezirke=getZoneBezirke(key);
-
   const features=zoneBezirke
     .map(b=>BEZIRKE_GEO.features.find(f=>parseInt(f.properties.BEZNR)===b))
     .filter(Boolean);
-
   if(!features.length){showToast(`Bezirk ${key} nicht gefunden ⚠️`,'error');return;}
-
-  // Immer gelb
   highlightLayer=L.geoJSON(
     {type:'FeatureCollection',features},
     {style:{color:'#f0c844',weight:2.5,fillColor:'#f0c844',fillOpacity:.1,opacity:.85}}
   ).addTo(map);
-
   map.fitBounds(highlightLayer.getBounds(),{padding:[60,60],maxZoom:13,animate:true});
-
   loadZones(key,features);
 }
 
 async function loadZones(key,bezFeatures){
   key=String(key);
   const zoneBezirke=getZoneBezirke(key);
-
-  // ── Kurzparkstreifen – rote Linien, CQL_FILTER nach BEZIRK ──
   if(zoneLayer){map.removeLayer(zoneLayer);zoneLayer=null;}
-  const kFilter=zoneBezirke.length===1
-    ?`BEZIRK=${zoneBezirke[0]}`
-    :`BEZIRK+IN+(${zoneBezirke.join(',')})`;
+  const kFilter=zoneBezirke.length===1?`BEZIRK=${zoneBezirke[0]}`:`BEZIRK+IN+(${zoneBezirke.join(',')})`;
   const urlK=`${WFS}&typeName=ogdwien:KURZPARKSTREIFENOGD&CQL_FILTER=${kFilter}`;
   for(const p of PROXIES){
     try{
@@ -450,212 +412,113 @@ async function loadZones(key,bezFeatures){
       break;
     }catch(e){}
   }
-
-  // ── Ladezonen – blaue Linien via OGD Wien CSV ──
   await loadLadezonen(zoneBezirke);
-
-  // ── AnrainerInnenparkplätze – lila Linien via PARKENANRAINEROGD ──
   await loadAnrainerZonen(zoneBezirke);
 }
 
-// ── Ladezonen: OGD Wien CSV → LINESTRING → blaue Linien ──
 async function loadLadezonen(bezirke){
-  // bezirke = Array, z.B. [4,5] oder [7]
   if(!Array.isArray(bezirke))bezirke=[bezirke];
   if(ladezonenLayer){map.removeLayer(ladezonenLayer);ladezonenLayer=null;}
   document.getElementById('ladezonenVal').textContent='lädt…';
-
-  // CQL_FILTER: BEZIRK=4 oder BEZIRK IN (4,5)
-  const filter=bezirke.length===1
-    ?`BEZIRK=${bezirke[0]}`
-    :`BEZIRK+IN+(${bezirke.join(',')})`;
-
+  const filter=bezirke.length===1?`BEZIRK=${bezirke[0]}`:`BEZIRK+IN+(${bezirke.join(',')})`;
   const csvUrl=`https://data.wien.gv.at/daten/geo?service=WFS&request=GetFeature&version=1.1.0`
-    +`&typeName=ogdwien:LADEZONENOGD&srsName=EPSG:4326&outputFormat=csv`
-    +`&CQL_FILTER=${filter}`;
-
-  const urls=[
-    csvUrl,
-    `https://corsproxy.io/?url=${encodeURIComponent(csvUrl)}`,
-    `https://api.allorigins.win/raw?url=${encodeURIComponent(csvUrl)}`,
-  ];
-
+    +`&typeName=ogdwien:LADEZONENOGD&srsName=EPSG:4326&outputFormat=csv&CQL_FILTER=${filter}`;
+  const urls=[csvUrl,`https://corsproxy.io/?url=${encodeURIComponent(csvUrl)}`,`https://api.allorigins.win/raw?url=${encodeURIComponent(csvUrl)}`];
   for(const url of urls){
     try{
-      const ctrl=new AbortController();
-      const t=setTimeout(()=>ctrl.abort(),20000);
-      const res=await fetch(url,{signal:ctrl.signal});
-      clearTimeout(t);
+      const ctrl=new AbortController();const t=setTimeout(()=>ctrl.abort(),20000);
+      const res=await fetch(url,{signal:ctrl.signal});clearTimeout(t);
       if(!res.ok)continue;
       const csv=await res.text();
       if(!csv||csv.trim().length<10)continue;
-
-      const lines=csv.trim().split('\n');
-      if(lines.length<2)continue;
-
+      const lines=csv.trim().split('\n');if(lines.length<2)continue;
       const header=parseCSVLine(lines[0]);
       const shapeIdx=header.indexOf('SHAPE');
       const addrIdx=header.indexOf('ADRESSE');
       const zeitraumIdx=header.indexOf('ZEITRAUM');
       const ausnahmeIdx=header.indexOf('AUSNAHME_TXT');
       if(shapeIdx<0)continue;
-
-      ladezonenLayer=L.layerGroup();
-      let count=0;
-
+      ladezonenLayer=L.layerGroup();let count=0;
       for(let i=1;i<lines.length;i++){
         if(!lines[i].trim())continue;
         const cols=parseCSVLine(lines[i]);
         const shape=cols[shapeIdx]||'';
-        const m=shape.match(/LINESTRING\s*\(([^)]+)\)/i);
-        if(!m)continue;
-        const coords=m[1].trim().split(',').map(p=>{
-          const[lng,lat]=p.trim().split(/\s+/).map(Number);
-          return[lat,lng];
-        });
+        const m=shape.match(/LINESTRING\s*\(([^)]+)\)/i);if(!m)continue;
+        const coords=m[1].trim().split(',').map(p=>{const[lng,lat]=p.trim().split(/\s+/).map(Number);return[lat,lng];});
         if(coords.length<2)continue;
-        const popup=`<b>🚚 Ladezone</b>`
-          +(cols[addrIdx]?`<br>📍 ${cols[addrIdx]}`:'')
-          +(cols[zeitraumIdx]?`<br>🕐 ${cols[zeitraumIdx]}`:'')
-          +(cols[ausnahmeIdx]?`<br>ℹ️ ${cols[ausnahmeIdx]}`:'');
-        L.polyline(coords,{color:'#007AFF',weight:5,opacity:0.9,lineCap:'round',lineJoin:'round'})
-          .bindPopup(popup).addTo(ladezonenLayer);
+        const popup=`<b>🚚 Ladezone</b>`+(cols[addrIdx]?`<br>📍 ${cols[addrIdx]}`:'')+(cols[zeitraumIdx]?`<br>🕐 ${cols[zeitraumIdx]}`:'')+(cols[ausnahmeIdx]?`<br>ℹ️ ${cols[ausnahmeIdx]}`:'');
+        L.polyline(coords,{color:'#007AFF',weight:5,opacity:0.9,lineCap:'round',lineJoin:'round'}).bindPopup(popup).addTo(ladezonenLayer);
         count++;
       }
-
       ladezonenLayer.addTo(map);
       document.getElementById('ladezonenVal').textContent=`${count} Linien (OGD Wien)`;
       if(count>0)showToast(`✅ ${count} Ladezonen geladen`,'success');
       else showToast('ℹ️ Keine Ladezonen in diesem Bezirk','info');
       return;
-    }catch(e){
-      console.warn('[Ladezonen] Fehler:',e.message);
-    }
+    }catch(e){console.warn('[Ladezonen] Fehler:',e.message);}
   }
   document.getElementById('ladezonenVal').textContent='Nicht verfügbar';
-  showToast('⚠️ Ladezonen konnten nicht geladen werden','error');
 }
 
-// ── AnrainerInnenparkplätze: PARKENANRAINEROGD → lila Linien ──
-// Quelle: https://data.gv.at/datasets/6d92970a-d698-418b-8576-f3b03dc1a59a
-// Spalten: FID, OBJECTID, SHAPE (LINESTRING lng lat), ADRESSE ("BEZ, Straße"),
-//          AUSNAHME_TXT, STELLPL_ANZ, WEITERE_INF
 async function loadAnrainerZonen(bez){
   if(!Array.isArray(bez))bez=[bez];
   if(anrainerLayer){map.removeLayer(anrainerLayer);anrainerLayer=null;}
   document.getElementById('anrainerVal').textContent='lädt…';
-
-  // Set aller Bezirks-Nummern dieser Zone (z.B. {4,5} oder {7})
   const bezNrs=new Set(bez.map(Number));
-  // Gesamter Datensatz – client-seitig nach Bezirk filtern via ADRESSE ("4, Straße")
-  const csvUrl='https://data.wien.gv.at/daten/geo?service=WFS&request=GetFeature'
-    +'&version=1.1.0&typeName=ogdwien:PARKENANRAINEROGD&srsName=EPSG:4326&outputFormat=csv';
-
-  const urls=[
-    csvUrl,
-    `https://corsproxy.io/?url=${encodeURIComponent(csvUrl)}`,
-    `https://api.allorigins.win/raw?url=${encodeURIComponent(csvUrl)}`,
-  ];
-
+  const csvUrl='https://data.wien.gv.at/daten/geo?service=WFS&request=GetFeature&version=1.1.0&typeName=ogdwien:PARKENANRAINEROGD&srsName=EPSG:4326&outputFormat=csv';
+  const urls=[csvUrl,`https://corsproxy.io/?url=${encodeURIComponent(csvUrl)}`,`https://api.allorigins.win/raw?url=${encodeURIComponent(csvUrl)}`];
   for(const url of urls){
     try{
-      const ctrl=new AbortController();
-      const t=setTimeout(()=>ctrl.abort(),30000);
-      const res=await fetch(url,{signal:ctrl.signal});
-      clearTimeout(t);
+      const ctrl=new AbortController();const t=setTimeout(()=>ctrl.abort(),30000);
+      const res=await fetch(url,{signal:ctrl.signal});clearTimeout(t);
       if(!res.ok)continue;
       const csv=await res.text();
-      if(!csv||csv.length<50)continue;
-      if(csv.trim().startsWith('<'))continue; // XML-Fehler statt CSV
-
-      const lines=csv.trim().split('\n');
-      if(lines.length<2){
-        document.getElementById('anrainerVal').textContent='Keine Daten';
-        return;
-      }
-
+      if(!csv||csv.length<50||csv.trim().startsWith('<'))continue;
+      const lines=csv.trim().split('\n');if(lines.length<2){document.getElementById('anrainerVal').textContent='Keine Daten';return;}
       const header=parseCSVLine(lines[0]);
-      const shapeIdx   =header.indexOf('SHAPE');
-      const addrIdx    =header.indexOf('ADRESSE');
+      const shapeIdx=header.indexOf('SHAPE');
+      const addrIdx=header.indexOf('ADRESSE');
       const ausnahmeIdx=header.indexOf('AUSNAHME_TXT');
-      const stellplIdx =header.indexOf('STELLPL_ANZ');
-      const infoIdx    =header.indexOf('WEITERE_INF');
-
-      if(shapeIdx<0){
-        console.warn('[Anrainer] Keine SHAPE-Spalte. Header:',header.join(', '));
-        continue;
-      }
-
-      anrainerLayer=L.layerGroup();
-      let count=0;
-
+      const stellplIdx=header.indexOf('STELLPL_ANZ');
+      const infoIdx=header.indexOf('WEITERE_INF');
+      if(shapeIdx<0){console.warn('[Anrainer] Keine SHAPE-Spalte. Header:',header.join(', '));continue;}
+      anrainerLayer=L.layerGroup();let count=0;
       for(let i=1;i<lines.length;i++){
         if(!lines[i].trim())continue;
         const cols=parseCSVLine(lines[i]);
-
-        // Bezirk-Filter: ADRESSE beginnt mit "BEZ, " z.B. "4, Margaretenstraße 3"
-        const addr=addrIdx>=0 ? cols[addrIdx]||'' : '';
+        const addr=addrIdx>=0?cols[addrIdx]||'':'';
         const addrBez=parseInt(addr.split(',')[0]);
         if(isNaN(addrBez)||!bezNrs.has(addrBez))continue;
-
         const shape=cols[shapeIdx]||'';
-        const m=shape.match(/LINESTRING\s*\(([^)]+)\)/i);
-        if(!m)continue;
-
-        const coords=m[1].trim().split(',').map(p=>{
-          const[lng,lat]=p.trim().split(/\s+/).map(Number);
-          return[lat,lng]; // Leaflet: [lat,lng]
-        });
+        const m=shape.match(/LINESTRING\s*\(([^)]+)\)/i);if(!m)continue;
+        const coords=m[1].trim().split(',').map(p=>{const[lng,lat]=p.trim().split(/\s+/).map(Number);return[lat,lng];});
         if(coords.length<2)continue;
-
-        const ausnahme=ausnahmeIdx>=0 ? cols[ausnahmeIdx]||'' : '';
-        const stellpl =stellplIdx>=0  ? cols[stellplIdx] ||'' : '';
-        const info    =infoIdx>=0     ? cols[infoIdx]    ||'' : '';
-
-        const popup=`<b>🅿️ AnrainerInnen-Parkplatz</b>`
-          +(addr    ? `<br>📍 ${addr}` : '')
-          +(stellpl ? `<br>🚗 ${stellpl} Stellplätze` : '')
-          +(ausnahme? `<br>📋 ${ausnahme}` : '')
-          +(info&&info!=='null'&&info.startsWith('http')
-              ? `<br><a href="${info}" target="_blank" style="color:#AF52DE">ℹ️ Mehr Info</a>` : '');
-
-        L.polyline(coords,{
-          color:'#AF52DE',
-          weight:5,
-          opacity:0.9,
-          lineCap:'round',
-          lineJoin:'round'
-        }).bindPopup(popup).addTo(anrainerLayer);
+        const ausnahme=ausnahmeIdx>=0?cols[ausnahmeIdx]||'':'';
+        const stellpl=stellplIdx>=0?cols[stellplIdx]||'':'';
+        const info=infoIdx>=0?cols[infoIdx]||'':'';
+        const popup=`<b>🅿️ AnrainerInnen-Parkplatz</b>`+(addr?`<br>📍 ${addr}`:'')+(stellpl?`<br>🚗 ${stellpl} Stellplätze`:'')+(ausnahme?`<br>📋 ${ausnahme}`:'')+(info&&info!=='null'&&info.startsWith('http')?`<br><a href="${info}" target="_blank" style="color:#AF52DE">ℹ️ Mehr Info</a>`:'');
+        L.polyline(coords,{color:'#AF52DE',weight:5,opacity:0.9,lineCap:'round',lineJoin:'round'}).bindPopup(popup).addTo(anrainerLayer);
         count++;
       }
-
       anrainerLayer.addTo(map);
-      document.getElementById('anrainerVal').textContent=
-        count>0 ? `${count} Zonen (OGD Wien)` : 'Keine im Bezirk';
+      document.getElementById('anrainerVal').textContent=count>0?`${count} Zonen (OGD Wien)`:'Keine im Bezirk';
       if(count>0)showToast(`🅿️ ${count} Anrainerparkplätze geladen`,'success');
       else showToast('ℹ️ Keine Anrainerzonen in diesem Bezirk','info');
       return;
-
-    }catch(e){
-      console.warn('[Anrainer] Fehler:',e.message);
-    }
+    }catch(e){console.warn('[Anrainer] Fehler:',e.message);}
   }
   document.getElementById('anrainerVal').textContent='Nicht verfügbar';
-  showToast('⚠️ Anrainerzonen konnten nicht geladen werden','error');
 }
 
-// ── CSV-Parser: gequotete Felder mit Komma werden korrekt behandelt ──
 function parseCSVLine(line){
-  const result=[];
-  let cur='',inQ=false;
+  const result=[];let cur='',inQ=false;
   for(let i=0;i<line.length;i++){
     const c=line[i];
     if(c==='"'){inQ=!inQ;}
     else if(c===','&&!inQ){result.push(cur.trim());cur='';}
     else{cur+=c;}
   }
-  result.push(cur.trim());
-  return result;
+  result.push(cur.trim());return result;
 }
 
 function placeMarker(lat,lng,acc){
@@ -666,7 +529,6 @@ function placeMarker(lat,lng,acc){
   document.getElementById('accVal').textContent=acc?`±${Math.round(acc)}m`:'Karten-Klick';
 }
 
-// ── GPS Zonen-Check ──
 async function checkPoint(lat,lng){
   if(!selectedBezirk){showResult('','⚠️','Bezirk fehlt','Tippe oben auf "Bezirk wählen"');return;}
   showResult('checking','⏳','Prüfe Zone…','Anfrage läuft…');
@@ -692,19 +554,15 @@ async function checkPoint(lat,lng){
   const inZone=data.features.filter(f=>pointInFeature([lng,lat],f));
   if(!inZone.length){
     showResult('outside','❌','Keine Pickerlzone','Hier gilt keine Kurzparkzonen-Berechtigungszone');
-    haptic('light');sendNotif('Kein Pickerl nötig','Keine Zone hier.');
-    return;
+    haptic('light');sendNotif('Kein Pickerl nötig','Keine Zone hier.');return;
   }
   const hasBez=inZone.some(f=>Object.keys(f.properties).some(k=>/bez/i.test(k)));
-  if(!hasBez){
-    showResult('inside','🅿️','Zone vorhanden','Kurzparkzone – Bezirk nicht im Datensatz');
-    haptic('medium');return;
-  }
-  const zoneBezirke=getZoneBezirke(selectedBezirk); // z.B. [14,15] oder [7]
+  if(!hasBez){showResult('inside','🅿️','Zone vorhanden','Kurzparkzone – Bezirk nicht im Datensatz');haptic('medium');return;}
+  const zoneBezirke=getZoneBezirke(selectedBezirk);
   const match=inZone.filter(f=>Object.keys(f.properties).some(k=>/bez/i.test(k)&&zoneBezirke.includes(parseInt(f.properties[k]))));
-  const zoneLabel=ZONE_META[String(selectedBezirk)]?.short || `${selectedBezirk}. Bezirk`;
+  const zoneLabel=ZONE_META[String(selectedBezirk)]?.short||`${selectedBezirk}. Bezirk`;
   if(match.length){
-    showResult('inside','<img src="check32.png" width="32" height="32">','Pickerlzone gültig!',`${zoneLabel} – Pickerl gilt hier`);
+    showResult('inside','✅','Pickerlzone gültig!',`${zoneLabel} – Pickerl gilt hier`);
     haptic('success');sendNotif('Gültig!',`${zoneLabel} Pickerl gilt hier.`);
   }else{
     const o=getBez(inZone[0]);
@@ -717,7 +575,6 @@ function getBez(f){for(const k of Object.keys(f.properties)){if(/bez/i.test(k)&&
 function pointInRing(pt,ring){const[x,y]=pt;let ins=false,j=ring.length-1;for(let i=0;i<ring.length;j=i++){const[xi,yi]=ring[i],[xj,yj]=ring[j];if(((yi>y)!=(yj>y))&&(x<(xj-xi)*(y-yi)/(yj-yi)+xi))ins=!ins;}return ins;}
 function pointInFeature(pt,f){const g=f.geometry;if(!g)return false;if(g.type==='Polygon')return pointInRing(pt,g.coordinates[0]);if(g.type==='MultiPolygon')return g.coordinates.some(p=>pointInRing(pt,p[0]));return false;}
 
-// ── GPS Tracking ──
 function startTracking(){
   if(!selectedBezirk){showToast('Bitte zuerst Bezirk auswählen!','info');openBezirkSheet();return;}
   if(watchId!==null)return;
@@ -786,22 +643,200 @@ function clearSavedPos(){try{localStorage.removeItem(STORAGE.POS);}catch(e){}sho
 async function requestNotifications(){
   if(!('Notification'in window)){showToast('Nicht unterstützt','error');return;}
   const p=await Notification.requestPermission();
-  if(p==='granted'){document.getElementById('notifStatusVal').textContent='Aktiv ✅';showToast('Benachrichtigungen aktiv!','success');new Notification('Parktracker',{body:'Aktiv!',icon:'/icon-192.png'});}
+  if(p==='granted'){document.getElementById('notifStatusVal').textContent='Aktiv ✅';showToast('Benachrichtigungen aktiv!','success');new Notification('Parktracker',{body:'Aktiv!'});}
   else{document.getElementById('notifStatusVal').textContent='Abgelehnt';showToast('Abgelehnt','error');}
 }
-function sendNotif(title,body){if(Notification?.permission==='granted')new Notification(title,{body,icon:'/icon-192.png'});}
+function sendNotif(title,body){if(Notification?.permission==='granted')new Notification(title,{body});}
 function updateNotifStatus(){document.getElementById('notifStatusVal').textContent=!('Notification'in window)?'Nicht unterstützt':Notification.permission==='granted'?'Aktiv ✅':'Inaktiv';}
 
 let toastTimer;
 function showToast(msg,type='info'){const t=document.getElementById('toast');t.textContent=msg;t.className=`toast ${type} show`;clearTimeout(toastTimer);toastTimer=setTimeout(()=>t.classList.remove('show'),3000);}
 
-let deferredPrompt=null;
-if('serviceWorker'in navigator)navigator.serviceWorker.register('/sw.js').catch(()=>{});
-window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();deferredPrompt=e;if(!window.matchMedia('(display-mode: standalone)').matches)document.getElementById('installBanner').classList.add('visible');});
-document.getElementById('installBtn').onclick=async()=>{if(!deferredPrompt)return;deferredPrompt.prompt();const{outcome}=await deferredPrompt.userChoice;if(outcome==='accepted')showToast('App installiert! 🎉','success');document.getElementById('installBanner').classList.remove('visible');deferredPrompt=null;};
-document.getElementById('dismissBtn').onclick=()=>document.getElementById('installBanner').classList.remove('visible');
 function updateOnline(){const o=!navigator.onLine;document.getElementById('offlineBanner').classList.toggle('visible',o);document.getElementById('mapOffline').classList.toggle('visible',o);}
 window.addEventListener('online',updateOnline);window.addEventListener('offline',updateOnline);updateOnline();
+
+// ══════════════════════════════════════════════════════════════
+// PWA – alles inline, keine externen Dateien nötig
+// ══════════════════════════════════════════════════════════════
+
+// ── 1. App-Icon als SVG Data-URL (gelbes P auf dunklem Grund) ──
+const ICON_SVG=`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192">
+  <rect width="192" height="192" rx="40" fill="#1C1C1E"/>
+  <text x="96" y="142" font-family="Arial Black,Helvetica,sans-serif" font-size="122"
+    font-weight="900" text-anchor="middle" fill="#f0c844">P</text>
+</svg>`;
+const ICON_URL='data:image/svg+xml;base64,'+btoa(unescape(encodeURIComponent(ICON_SVG)));
+document.getElementById('appleTouchIcon').href=ICON_URL;
+
+// ── 2. Web App Manifest als Blob-URL ──────────────────────────
+const manifest={
+  name:'Parktracker Wien',
+  short_name:'Parktracker',
+  description:'Prüfe ob dein Wiener Parkpickerl gilt – gratis, offline-fähig.',
+  start_url:'./',
+  scope:'./',
+  display:'standalone',
+  background_color:'#1C1C1E',
+  theme_color:'#007AFF',
+  orientation:'portrait-primary',
+  lang:'de-AT',
+  categories:['navigation','utilities'],
+  icons:[
+    {src:ICON_URL,sizes:'192x192',type:'image/svg+xml',purpose:'any maskable'},
+    {src:ICON_URL,sizes:'512x512',type:'image/svg+xml',purpose:'any maskable'}
+  ],
+  shortcuts:[{
+    name:'Jetzt prüfen',
+    short_name:'Prüfen',
+    url:'./?action=check',
+    icons:[{src:ICON_URL,sizes:'192x192'}]
+  }]
+};
+const mBlob=new Blob([JSON.stringify(manifest)],{type:'application/manifest+json'});
+document.getElementById('pwaManifest').href=URL.createObjectURL(mBlob);
+
+// ── 3. Service Worker als Blob (Offline-Cache der App-Shell) ──
+const SW_CODE=`
+const CACHE='parktracker-v3';
+self.addEventListener('install',e=>{
+  e.waitUntil(
+    caches.open(CACHE)
+      .then(c=>c.add(new Request(self.location.href.replace(/\\/[^/]*$/, '/'),{cache:'reload'})))
+      .then(()=>self.skipWaiting())
+      .catch(()=>self.skipWaiting())
+  );
+});
+self.addEventListener('activate',e=>{
+  e.waitUntil(
+    caches.keys()
+      .then(keys=>Promise.all(keys.filter(k=>k!==CACHE).map(k=>caches.delete(k))))
+      .then(()=>self.clients.claim())
+  );
+});
+self.addEventListener('fetch',e=>{
+  if(e.request.method!=='GET')return;
+  const url=new URL(e.request.url);
+  // Externe APIs immer live (Karten, OGD Wien)
+  if(url.hostname!==self.location.hostname){
+    e.respondWith(
+      fetch(e.request).catch(()=>caches.match(e.request)||new Response('',{status:503}))
+    );
+    return;
+  }
+  // App-Shell: Cache-first, im Hintergrund aktualisieren
+  e.respondWith(
+    caches.match(e.request).then(cached=>{
+      const fresh=fetch(e.request).then(res=>{
+        if(res&&res.ok){
+          const clone=res.clone();
+          caches.open(CACHE).then(c=>c.put(e.request,clone));
+        }
+        return res;
+      }).catch(()=>cached||new Response('',{status:503}));
+      return cached||fresh;
+    })
+  );
+});`;
+if('serviceWorker'in navigator){
+  try{
+    const swBlob=new Blob([SW_CODE],{type:'application/javascript'});
+    const swUrl=URL.createObjectURL(swBlob);
+    navigator.serviceWorker.register(swUrl,{scope:'./'})
+      .then(reg=>{
+        console.log('[SW] ✅ Registriert, scope:',reg.scope);
+        reg.update();
+      })
+      .catch(e=>console.warn('[SW] Fehler (normal bei file://):',e.message));
+  }catch(e){console.warn('[SW] Blob-Fehler:',e);}
+}
+
+// ── 4. Install-Logik: Android + iOS ──────────────────────────
+let deferredPrompt=null;
+const isIos=()=>/iphone|ipad|ipod/i.test(navigator.userAgent)&&!window.MSStream;
+const isStandalone=()=>
+  window.matchMedia('(display-mode:standalone)').matches||
+  navigator.standalone===true;
+const IOS_KEY='pp_ios_hint_v2';
+
+function showIosHint(){
+  if(document.getElementById('iosInstallModal'))return;
+  const modal=document.createElement('div');
+  modal.id='iosInstallModal';
+  modal.innerHTML=`<div class="ios-modal-box">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+      <div style="display:flex;align-items:center;gap:12px">
+        <div style="background:#f0c844;border-radius:14px;width:48px;height:48px;
+          display:flex;align-items:center;justify-content:center;
+          font-size:28px;font-weight:900;color:#000;font-family:system-ui,sans-serif;
+          box-shadow:0 4px 12px rgba(240,200,68,.4)">P</div>
+        <div>
+          <div style="font-weight:700;font-size:17px;letter-spacing:-.3px">Parktracker installieren</div>
+          <div style="font-size:12px;color:#8E8E93;margin-top:2px">Kostenlos · Offline · Kein App Store</div>
+        </div>
+      </div>
+      <button id="iosCloseBtn"
+        style="background:rgba(255,255,255,.12);border:none;color:#fff;border-radius:50%;
+        width:32px;height:32px;font-size:16px;cursor:pointer;flex-shrink:0">✕</button>
+    </div>
+    <div class="ios-step">
+      <div class="ios-step-num">1</div>
+      <div>Tippe auf das <strong style="color:#007AFF">Teilen-Symbol ⬆️</strong><br>
+        <span style="color:#8E8E93;font-size:12px">Unten in der Safari-Leiste</span></div>
+    </div>
+    <div class="ios-step">
+      <div class="ios-step-num">2</div>
+      <div>Wähle <strong style="color:#007AFF">„Zum Home-Bildschirm"</strong><br>
+        <span style="color:#8E8E93;font-size:12px">Im Teilen-Menü nach unten scrollen</span></div>
+    </div>
+    <div class="ios-step" style="margin-bottom:0">
+      <div class="ios-step-num">3</div>
+      <div>Tippe oben rechts auf <strong style="color:#007AFF">„Hinzufügen"</strong> 🎉<br>
+        <span style="color:#8E8E93;font-size:12px">Die App erscheint auf deinem Homescreen</span></div>
+    </div>
+    <div style="margin-top:16px;padding-top:14px;border-top:1px solid rgba(255,255,255,.08);
+      font-size:11px;color:#636366;text-align:center">
+      Nur in Safari auf iPhone &amp; iPad verfügbar
+    </div>
+  </div>`;
+  document.body.appendChild(modal);
+  const close=()=>{
+    modal.style.opacity='0';
+    modal.style.transition='opacity .25s';
+    setTimeout(()=>modal.remove(),250);
+    localStorage.setItem(IOS_KEY,'1');
+  };
+  document.getElementById('iosCloseBtn').onclick=close;
+  modal.addEventListener('click',e=>{if(e.target===modal)close();});
+}
+
+// Android/Chrome: nativer Install-Banner
+window.addEventListener('beforeinstallprompt',e=>{
+  e.preventDefault();
+  deferredPrompt=e;
+  if(!isStandalone())document.getElementById('installBanner').classList.add('visible');
+});
+window.addEventListener('appinstalled',()=>{
+  document.getElementById('installBanner').classList.remove('visible');
+  showToast('🎉 App installiert! Schau auf deinen Homescreen','success');
+  deferredPrompt=null;
+});
+document.getElementById('installBtn').onclick=async()=>{
+  if(!deferredPrompt)return;
+  deferredPrompt.prompt();
+  const{outcome}=await deferredPrompt.userChoice;
+  if(outcome==='accepted')showToast('App installiert! 🎉','success');
+  document.getElementById('installBanner').classList.remove('visible');
+  deferredPrompt=null;
+};
+document.getElementById('dismissBtn').onclick=()=>{
+  document.getElementById('installBanner').classList.remove('visible');
+  localStorage.setItem(IOS_KEY,'1');
+};
+
+// iOS: Hinweis nach 2 Sek., nur einmal, nur wenn nicht installiert
+if(isIos()&&!isStandalone()&&!localStorage.getItem(IOS_KEY)){
+  setTimeout(showIosHint,2000);
+}
 
 initMap();
 initOnboarding();
