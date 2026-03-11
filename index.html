@@ -73,8 +73,8 @@ header{display:flex;align-items:center;justify-content:space-between;padding:10p
 .legend-line{width:20px;height:3px;border-radius:2px;flex-shrink:0}
 #onboarding{position:fixed;inset:0;z-index:2000;background:linear-gradient(160deg,#150002 0%,#0f0f0f 60%);display:flex;flex-direction:column;padding:calc(var(--safe-top) + 40px) 24px calc(var(--safe-bot) + 24px);transition:opacity .4s,transform .4s}
 #onboarding.hidden{opacity:0;transform:scale(.96);pointer-events:none}
-.ob-logo{width:80px;height:80px;background:linear-gradient(145deg,#ff1f35,#007AFF,#a80012);border-radius:22px;display:flex;align-items:center;justify-content:center;margin-bottom:28px;box-shadow:0 12px 40px rgba(226,0,26,.55),inset 0 1px 0 rgba(255,255,255,.2)}
-.ob-logo-p{font-size:42px;font-weight:900;color:#fff;font-family:var(--font-d);line-height:1;letter-spacing:-2px;text-shadow:0 2px 8px rgba(0,0,0,.3)}
+.ob-logo{width:80px;height:80px;background:#f0c844;border-radius:22px;display:flex;align-items:center;justify-content:center;margin-bottom:28px;box-shadow:0 12px 40px rgba(240,200,68,.45),inset 0 1px 0 rgba(255,255,255,.2)}
+.ob-logo-p{font-size:42px;font-weight:900;color:#000;font-family:var(--font-d);line-height:1;letter-spacing:-2px}
 .ob-title{font-size:30px;font-weight:800;letter-spacing:-1px;margin-bottom:8px;line-height:1.2;color:#fff}
 .ob-title span{color:var(--accent)}
 .ob-sub{font-size:14px;color:var(--muted);font-family:var(--font-m);line-height:1.6;margin-bottom:28px}
@@ -85,7 +85,7 @@ header{display:flex;align-items:center;justify-content:space-between;padding:10p
 .bez-option:active{transform:scale(.95)}
 .bez-option.selected{border-color:var(--accent);background:rgba(226,0,26,.18);color:#ff8090}
 .bez-nr{font-size:18px;font-weight:800;display:block;margin-bottom:2px}
-.ob-continue{margin-top:16px;background:linear-gradient(135deg,#ff1f35,#007AFF);color:#fff;border:none;border-radius:14px;padding:16px;font-family:var(--font-d);font-weight:800;font-size:16px;cursor:pointer;width:100%;flex-shrink:0;opacity:.4;pointer-events:none;transition:opacity .2s;box-shadow:0 4px 20px rgba(226,0,26,.4)}
+.ob-continue{margin-top:16px;background:#f0c844;color:#000;border:none;border-radius:14px;padding:16px;font-family:var(--font-d);font-weight:800;font-size:16px;cursor:pointer;width:100%;flex-shrink:0;opacity:.4;pointer-events:none;transition:opacity .2s;box-shadow:0 4px 20px rgba(240,200,68,.4)}
 .ob-continue.active{opacity:1;pointer-events:auto}
 .sheet-overlay{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:900;opacity:0;pointer-events:none;transition:opacity .3s}
 .sheet-overlay.visible{opacity:1;pointer-events:auto}
@@ -131,7 +131,7 @@ header{display:flex;align-items:center;justify-content:space-between;padding:10p
 
 <div id="onboarding">
   <div class="ob-logo"><span class="ob-logo-p">P</span></div>
-  <div class="ob-title">Park<span>pickerl</span><br>Checker Wien</div>
+  <div class="ob-title">Parktracker</div>
   <div class="ob-sub">Wähle deinen Heimatbezirk.<br>Die App merkt ihn sich dauerhaft.</div>
   <div class="ob-label">Mein Bezirk</div>
   <div class="bezirk-grid" id="bezirkGrid"></div>
