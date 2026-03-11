@@ -250,10 +250,11 @@ function getZoneBezirke(key){
   return e?e.nr:[parseInt(key)];
 }
 
+const CF_WORKER='https://parktracker-proxy.szerhij-vajnahij.workers.dev';
 const PROXIES=[
+  u=>`${CF_WORKER}?url=${encodeURIComponent(u)}`,
   u=>`https://corsproxy.io/?url=${encodeURIComponent(u)}`,
-  u=>`https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`,
-  u=>`https://thingproxy.freeboard.io/fetch/${u}`
+  u=>`https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`
 ];
 const WFS='https://data.wien.gv.at/daten/geo?service=WFS&request=GetFeature&version=1.1.0&outputFormat=application/json&srsName=EPSG:4326';
 
