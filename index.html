@@ -14,8 +14,8 @@
 <meta property="og:description" content="Prüfe ob dein Parkpickerl hier gilt – schnell, gratis, offline-fähig.">
 <meta property="og:type" content="website">
 <meta property="og:locale" content="de_AT">
-<link rel="manifest" id="pwaManifest">
-<link rel="apple-touch-icon" id="appleTouchIcon">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-192.png">
 <title>Parktracker – Wien</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -174,11 +174,6 @@ header{display:flex;align-items:center;justify-content:space-between;padding:10p
     <div class="legend-row"><span class="legend-line" style="background:#007AFF"></span>Ladezone</div>
     <div class="legend-row"><span class="legend-line" style="background:#AF52DE"></span>Anrainerzone</div>
     <div class="legend-row"><span class="legend-line" style="background:#f0c844"></span>Dein Bezirk</div>
-    <div class="legend-row" style="margin-top:4px;border-top:1px solid rgba(255,255,255,.08);padding-top:6px">
-      <span class="legend-line" style="background:#FF9500;border-top:2px dashed #FF9500;height:0;background:none;border-radius:0"></span>
-      <span style="flex:1">Baustellen</span>
-      <button id="baustellenToggle" onclick="toggleBaustellen()" style="background:rgba(255,149,0,.15);border:1px solid rgba(255,149,0,.4);color:#FF9500;border-radius:20px;padding:2px 8px;font-size:10px;cursor:pointer;font-family:var(--font-m)">EIN</button>
-    </div>
   </div>
 
   <button id="gpsFab" onclick="getLocation()">📍</button>
@@ -203,7 +198,6 @@ header{display:flex;align-items:center;justify-content:space-between;padding:10p
   <div class="info-row"><span class="key">API-Status</span><span class="val" id="apiStatusVal">—</span></div>
   <div class="info-row"><span class="key">Ladezonen geladen</span><span class="val" id="ladezonenVal">—</span></div>
   <div class="info-row"><span class="key">Anrainerzonen</span><span class="val" id="anrainerVal">—</span></div>
-  <div class="info-row"><span class="key">Baustellen</span><span class="val" id="baustellenVal">—</span></div>
   <div class="info-row"><span class="key">Mein Bezirk</span><span class="val" id="savedBezirkVal">—</span></div>
   <div class="info-row"><span class="key">Benachrichtigungen</span><span class="val" id="notifStatusVal">—</span></div>
   <div class="info-row" style="gap:10px;flex-wrap:wrap;padding-top:4px">
@@ -276,7 +270,7 @@ const ZONE_META={
   }
 };
 
-let map,userMarker,highlightLayer,zoneLayer,ladezonenLayer,anrainerLayer,baustellenLayer;
+let map,userMarker,highlightLayer,zoneLayer,ladezonenLayer,anrainerLayer;
 let selectedBezirk=null,activeSheet=null,swipeStartY=0;
 let watchId=null,lastLat=null,lastLng=null,followMode=true;
 
@@ -376,139 +370,6 @@ function selectBezirk(key,hl=true){
 // ── Karte ──
 let BEZIRKE_GEO=null;
 
-// ── Baustellen: BAUSTELLENPKTOGD (Punkte) + BAUSTELLENLINIEOGD (Linien) ──
-// Quelle: data.gv.at – verkehrswirksame Baustellen Wien, täglich aktualisiert
-// Punkte via CSV, Linien via GeoJSON (robuster, kein manuelles Geometrie-Parsing)
-let baustellenVisible=true;
-
-async function loadBaustellen(){
-  if(baustellenLayer){map.removeLayer(baustellenLayer);baustellenLayer=null;}
-  document.getElementById('baustellenVal').textContent='lädt…';
-  baustellenLayer=L.layerGroup();
-  let totalCount=0;
-
-  // Versuche URL über Proxy-Kette laden
-  async function tryFetch(rawUrl, asJson=false){
-    const urls=[
-      rawUrl,
-      `https://corsproxy.io/?url=${encodeURIComponent(rawUrl)}`,
-      `https://api.allorigins.win/raw?url=${encodeURIComponent(rawUrl)}`,
-    ];
-    for(const url of urls){
-      try{
-        const ctrl=new AbortController();
-        const t=setTimeout(()=>ctrl.abort(),25000);
-        const res=await fetch(url,{signal:ctrl.signal});
-        clearTimeout(t);
-        if(!res.ok) continue;
-        const text=await res.text();
-        if(!text||text.length<30) continue;
-        if(text.trim().startsWith('<') && !asJson) return text; // CSV darf nicht JSON sein
-        if(text.trim().startsWith('<') && asJson) continue;    // JSON darf kein HTML/XML sein
-        return text;
-      }catch(e){ /* try next */ }
-    }
-    return null;
-  }
-
-  // ── 1. Punkte: CSV ──
-  const WFS='https://data.wien.gv.at/daten/geo?service=WFS&request=GetFeature&version=1.1.0&srsName=EPSG:4326';
-  const csvPkt=await tryFetch(`${WFS}&outputFormat=csv&typeName=ogdwien:BAUSTELLENPKTOGD`);
-  if(csvPkt){
-    const rows=csvPkt.trim().split('\n');
-    const hdr=parseCSVLine(rows[0]).map(h=>h.toUpperCase().trim());
-    const col=n=>hdr.indexOf(n);
-    const SI=col('SHAPE'), BEZ=col('BEZIRK'), BEZ2=col('BEZEICHNUNG'),
-          VON=col('DATUM_VON'), BIS=col('DATUM_BIS'), INF=col('KURZTEXT');
-    if(SI>=0){
-      for(let i=1;i<rows.length;i++){
-        if(!rows[i].trim()) continue;
-        const c=parseCSVLine(rows[i]);
-        const m=(c[SI]||'').match(/POINT\s*\(([^)]+)\)/i);
-        if(!m) continue;
-        const[lng,lat]=m[1].trim().split(/\s+/).map(Number);
-        if(isNaN(lat)||isNaN(lng)) continue;
-        const popup=`<b>🚧 Baustelle</b>`
-          +(BEZ2>=0&&c[BEZ2] ? `<br>📌 ${c[BEZ2]}` : '')
-          +(BEZ>=0&&c[BEZ]   ? `<br>📍 ${c[BEZ]}. Bezirk` : '')
-          +((VON>=0&&c[VON])||(BIS>=0&&c[BIS]) ? `<br>📅 ${c[VON]||''}${c[BIS]?' – '+c[BIS]:''}` : '')
-          +(INF>=0&&c[INF]   ? `<br>ℹ️ ${c[INF]}` : '');
-        const icon=L.divIcon({
-          className:'',
-          html:`<div style="background:#FF9500;border:2px solid #fff;border-radius:50%;width:14px;height:14px;box-shadow:0 2px 6px rgba(0,0,0,.45)"></div>`,
-          iconSize:[14,14],iconAnchor:[7,7]
-        });
-        L.marker([lat,lng],{icon}).bindPopup(popup).addTo(baustellenLayer);
-        totalCount++;
-      }
-    }
-  }
-
-  // ── 2. Linien: GeoJSON (kein manuelles Geometrie-Parsing nötig!) ──
-  const jsonLin=await tryFetch(
-    `${WFS}&outputFormat=application%2Fjson&typeName=ogdwien:BAUSTELLENLINIEOGD`,
-    true
-  );
-  if(jsonLin){
-    try{
-      const gj=JSON.parse(jsonLin);
-      if(gj && gj.features && gj.features.length>0){
-        L.geoJSON(gj,{
-          style:()=>({
-            color:'#FF9500',
-            weight:5,
-            opacity:0.9,
-            dashArray:'10 7',
-            lineCap:'round',
-            lineJoin:'round'
-          }),
-          onEachFeature(feat,layer){
-            const p=feat.properties||{};
-            // Spaltennamen aus echten Properties lesen (egal wie sie heißen)
-            const name=p.BEZEICHNUNG||p.bezeichnung||p.NAME||p.name||'';
-            const bez =p.BEZIRK||p.bezirk||'';
-            const von =p.DATUM_VON||p.datum_von||p.VON||'';
-            const bis =p.DATUM_BIS||p.datum_bis||p.BIS||'';
-            const inf =p.KURZTEXT||p.kurztext||p.INFO||p.info||'';
-            const popup=`<b>🚧 Baustelle (Sperre)</b>`
-              +(name ? `<br>📌 ${name}` : '')
-              +(bez  ? `<br>📍 ${bez}. Bezirk` : '')
-              +(von||bis ? `<br>📅 ${von}${bis?' – '+bis:''}` : '')
-              +(inf  ? `<br>ℹ️ ${inf}` : '');
-            layer.bindPopup(popup);
-            totalCount++;
-          }
-        }).addTo(baustellenLayer);
-      }
-    }catch(e){ console.warn('[Baustellen Linien] JSON-Parse-Fehler:',e); }
-  }
-
-  if(totalCount===0){
-    document.getElementById('baustellenVal').textContent='Keine Daten';
-    showToast('⚠️ Baustellen konnten nicht geladen werden','error');
-    return;
-  }
-  if(baustellenVisible) baustellenLayer.addTo(map);
-  document.getElementById('baustellenVal').textContent=`${totalCount} (OGD Wien)`;
-  showToast(`🚧 ${totalCount} Baustellen geladen`,'success');
-}
-
-function toggleBaustellen(){
-  baustellenVisible=!baustellenVisible;
-  const btn=document.getElementById('baustellenToggle');
-  if(baustellenVisible){
-    if(baustellenLayer)baustellenLayer.addTo(map);
-    btn.textContent='EIN';
-    btn.style.background='rgba(255,149,0,.15)';
-    btn.style.borderColor='rgba(255,149,0,.4)';
-  }else{
-    if(baustellenLayer)map.removeLayer(baustellenLayer);
-    btn.textContent='AUS';
-    btn.style.background='rgba(255,255,255,.05)';
-    btn.style.borderColor='rgba(255,255,255,.15)';
-  }
-}
-
 function initMap(){
   map=L.map('map',{center:[48.2082,16.3738],zoom:12,zoomControl:false});
   L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',{
@@ -517,7 +378,6 @@ function initMap(){
   L.control.zoom({position:'bottomleft'}).addTo(map);
   map.on('tileerror',()=>{if(!navigator.onLine)document.getElementById('mapOffline').classList.add('visible');});
   loadRealBezirksgrenzen();
-  loadBaustellen();
 }
 
 async function loadRealBezirksgrenzen(){
@@ -935,164 +795,18 @@ function updateNotifStatus(){document.getElementById('notifStatusVal').textConte
 let toastTimer;
 function showToast(msg,type='info'){const t=document.getElementById('toast');t.textContent=msg;t.className=`toast ${type} show`;clearTimeout(toastTimer);toastTimer=setTimeout(()=>t.classList.remove('show'),3000);}
 
-// ══════════════════════════════════════════════════════════════════
-// PWA – "Zum Homescreen hinzufügen" – komplett inline
-// Keine externen Dateien nötig (kein manifest.json, sw.js, icon.png)
-// ══════════════════════════════════════════════════════════════════
-
-// ── 1. App-Icon als SVG Data-URL ──────────────────────────────────
-// Gelbes „P" auf dunklem Grund – erscheint am iPhone-Homescreen
-const ICON_SVG=`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <rect width="512" height="512" rx="115" fill="#1C1C1E"/>
-  <text x="256" y="370" font-family="Arial Black,sans-serif" font-size="340"
-    font-weight="900" text-anchor="middle" fill="#f0c844">P</text>
-</svg>`;
-const ICON_URL='data:image/svg+xml;base64,'+btoa(unescape(encodeURIComponent(ICON_SVG)));
-document.getElementById('appleTouchIcon').href=ICON_URL;
-
-// ── 2. Web App Manifest als Blob-URL ──────────────────────────────
-// Ohne Manifest zeigt iOS den Seitentitel statt "Parktracker" am Homescreen
-const PWA_MANIFEST={
-  name:'Parktracker Wien',
-  short_name:'Parktracker',
-  description:'Prüfe ob dein Wiener Parkpickerl gilt – gratis, offline-fähig.',
-  start_url:'./',
-  scope:'./',
-  display:'standalone',
-  background_color:'#1C1C1E',
-  theme_color:'#007AFF',
-  orientation:'portrait-primary',
-  lang:'de-AT',
-  categories:['navigation','utilities'],
-  icons:[
-    {src:ICON_URL,sizes:'192x192',type:'image/svg+xml',purpose:'any maskable'},
-    {src:ICON_URL,sizes:'512x512',type:'image/svg+xml',purpose:'any maskable'}
-  ],
-  shortcuts:[{
-    name:'Jetzt prüfen',short_name:'Prüfen',
-    description:'GPS-Standort sofort prüfen',
-    url:'./?action=check',
-    icons:[{src:ICON_URL,sizes:'192x192'}]
-  }]
-};
-try{
-  const blob=new Blob([JSON.stringify(PWA_MANIFEST)],{type:'application/manifest+json'});
-  document.getElementById('pwaManifest').href=URL.createObjectURL(blob);
-}catch(e){console.warn('[PWA] Manifest Fehler:',e);}
-
-// ── 3. Service Worker als Blob (Offline-Cache) ─────────────────────
-// Cached die App-Shell; Karten + API-Requests immer live laden
-const SW_SRC=`
-const CACHE='parktracker-v1';
-self.addEventListener('install',e=>{
-  e.waitUntil(caches.open(CACHE).then(c=>c.addAll(['./']).catch(()=>{})).then(()=>self.skipWaiting()));
-});
-self.addEventListener('activate',e=>{
-  e.waitUntil(caches.keys()
-    .then(keys=>Promise.all(keys.filter(k=>k!==CACHE).map(k=>caches.delete(k))))
-    .then(()=>self.clients.claim()));
-});
-self.addEventListener('fetch',e=>{
-  if(e.request.method!=='GET')return;
-  const u=new URL(e.request.url);
-  if(u.hostname!==self.location.hostname){
-    e.respondWith(fetch(e.request).catch(()=>caches.match(e.request)));
-    return;
-  }
-  e.respondWith(caches.open(CACHE).then(cache=>
-    cache.match(e.request).then(cached=>{
-      const fresh=fetch(e.request).then(res=>{if(res&&res.ok)cache.put(e.request,res.clone());return res;}).catch(()=>cached);
-      return cached||fresh;
-    })
-  ));
-});
-`;
-if('serviceWorker'in navigator){
-  try{
-    const swBlob=new Blob([SW_SRC],{type:'application/javascript'});
-    navigator.serviceWorker.register(URL.createObjectURL(swBlob),{scope:'./'})
-      .then(()=>console.log('[SW] ✅ Registriert'))
-      .catch(e=>console.warn('[SW] Fehler:',e));
-  }catch(e){console.warn('[SW] Blob-URL nicht unterstützt:',e);}
-}
-
-// ── 4. Install-Logik: Android + iOS ───────────────────────────────
-const INSTALL_KEY='pp_install_dismissed_v2';
 let deferredPrompt=null;
-const isIos=()=>/iphone|ipad|ipod/i.test(navigator.userAgent)&&!/crios/i.test(navigator.userAgent);
-const isStandalone=()=>window.matchMedia('(display-mode: standalone)').matches||navigator.standalone===true;
+if('serviceWorker'in navigator)navigator.serviceWorker.register('/sw.js').catch(()=>{});
+window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();deferredPrompt=e;if(!window.matchMedia('(display-mode: standalone)').matches)document.getElementById('installBanner').classList.add('visible');});
+document.getElementById('installBtn').onclick=async()=>{if(!deferredPrompt)return;deferredPrompt.prompt();const{outcome}=await deferredPrompt.userChoice;if(outcome==='accepted')showToast('App installiert! 🎉','success');document.getElementById('installBanner').classList.remove('visible');deferredPrompt=null;};
+document.getElementById('dismissBtn').onclick=()=>document.getElementById('installBanner').classList.remove('visible');
+function updateOnline(){const o=!navigator.onLine;document.getElementById('offlineBanner').classList.toggle('visible',o);document.getElementById('mapOffline').classList.toggle('visible',o);}
+window.addEventListener('online',updateOnline);window.addEventListener('offline',updateOnline);updateOnline();
 
-// iOS Safari: Schritt-für-Schritt Modal
-function showIosInstallHint(){
-  if(document.getElementById('iosHint'))return;
-  const el=document.createElement('div');
-  el.id='iosHint';
-  el.style.cssText='position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.72);display:flex;align-items:flex-end;justify-content:center;animation:iosHintFade .25s ease';
-  el.innerHTML=`
-    <style>
-      @keyframes iosHintFade{from{opacity:0}to{opacity:1}}
-      @keyframes iosHintUp{from{transform:translateY(60px);opacity:0}to{transform:translateY(0);opacity:1}}
-    </style>
-    <div style="background:#2C2C2E;border-radius:24px 24px 0 0;padding:20px 20px calc(28px + env(safe-area-inset-bottom,0px));width:100%;max-width:500px;color:#fff;font-family:-apple-system,sans-serif;animation:iosHintUp .3s cubic-bezier(.34,1.56,.64,1)">
-      <div style="width:36px;height:4px;background:#48484A;border-radius:2px;margin:0 auto 18px"></div>
-      <div style="display:flex;align-items:center;gap:14px;margin-bottom:18px">
-        <div style="width:52px;height:52px;background:#f0c844;border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:30px;font-weight:900;color:#1C1C1E;flex-shrink:0;font-family:-apple-system,sans-serif">P</div>
-        <div>
-          <div style="font-size:17px;font-weight:700">Parktracker installieren</div>
-          <div style="font-size:13px;color:#8E8E93;margin-top:2px">Kein App Store · Offline-fähig · Gratis</div>
-        </div>
-        <button id="iosHintClose" style="margin-left:auto;background:#3A3A3C;border:none;color:#ebebeb;width:28px;height:28px;border-radius:50%;font-size:14px;cursor:pointer;flex-shrink:0">✕</button>
-      </div>
-      <div style="display:flex;flex-direction:column;gap:10px">
-        <div style="display:flex;align-items:center;gap:12px;background:#3A3A3C;border-radius:14px;padding:13px">
-          <span style="font-size:24px">1️⃣</span>
-          <div style="font-size:14px;line-height:1.4">Tippe auf das <strong style="color:#007AFF">Teilen-Symbol ⬆️</strong><br><span style="color:#8E8E93;font-size:12px">unten in der Safari-Menüleiste</span></div>
-        </div>
-        <div style="display:flex;align-items:center;gap:12px;background:#3A3A3C;border-radius:14px;padding:13px">
-          <span style="font-size:24px">2️⃣</span>
-          <div style="font-size:14px;line-height:1.4">Scrolle und tippe auf<br><strong style="color:#007AFF">„Zum Home&#8209;Bildschirm"</strong></div>
-        </div>
-        <div style="display:flex;align-items:center;gap:12px;background:#3A3A3C;border-radius:14px;padding:13px">
-          <span style="font-size:24px">3️⃣</span>
-          <div style="font-size:14px;line-height:1.4">Tippe oben rechts auf<br><strong style="color:#34C759">„Hinzufügen" → Fertig! 🎉</strong></div>
-        </div>
-      </div>
-      <div style="margin-top:14px;text-align:center;font-size:11px;color:#636366">Nur in Safari verfügbar · startet wie eine native App</div>
-    </div>`;
-  document.body.appendChild(el);
-  const close=()=>{el.remove();localStorage.setItem(INSTALL_KEY,'1');};
-  el.addEventListener('click',e=>{if(e.target===el)close();});
-  document.getElementById('iosHintClose').addEventListener('click',close);
-}
-
-// Android/Chrome: natives Install-Banner
-window.addEventListener('beforeinstallprompt',e=>{
-  e.preventDefault();deferredPrompt=e;
-  if(!isStandalone())document.getElementById('installBanner').classList.add('visible');
-});
-window.addEventListener('appinstalled',()=>{
-  document.getElementById('installBanner').classList.remove('visible');
-  showToast('✅ Installiert! Öffne die App vom Homescreen','success');
-  deferredPrompt=null;
-});
-document.getElementById('installBtn').addEventListener('click',async()=>{
-  if(!deferredPrompt)return;
-  deferredPrompt.prompt();
-  const{outcome}=await deferredPrompt.userChoice;
-  if(outcome==='accepted')showToast('App installiert! 🎉','success');
-  document.getElementById('installBanner').classList.remove('visible');
-  deferredPrompt=null;
-});
-document.getElementById('dismissBtn').addEventListener('click',()=>{
-  document.getElementById('installBanner').classList.remove('visible');
-  localStorage.setItem(INSTALL_KEY,'1');
-});
-
-// iOS: Modal nach 2.8s – einmalig, nur Safari, nur wenn nicht installiert
-if(isIos()&&!isStandalone()&&!localStorage.getItem(INSTALL_KEY)){
-  setTimeout(showIosInstallHint,2800);
-}
-
+initMap();
+initOnboarding();
+updateNotifStatus();
+if(new URLSearchParams(location.search).get('action')==='check')setTimeout(getLocation,800);
 </script>
 </body>
 </html>
