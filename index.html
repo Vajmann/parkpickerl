@@ -446,14 +446,13 @@ async function loadZones(key,bezFeatures){
   if(zoneLayer){map.removeLayer(zoneLayer);zoneLayer=null;}
   const kFilter=zoneBezirke.length===1?`BEZIRK=${zoneBezirke[0]}`:`BEZIRK+IN+(${zoneBezirke.join(',')})`;
   const urlK=`${WFS}&typeName=ogdwien:KURZPARKSTREIFENOGD&CQL_FILTER=${kFilter}`;
-  for(const p of PROXIES){
-    try{
-      const r=await fetch(p(urlK));if(!r.ok)throw 0;
-      const d=await r.json();if(!d.features)throw 0;
+  try{
+    const txt=await robustFetch(urlK,15000);
+    const d=JSON.parse(txt);
+    if(d&&d.features){
       zoneLayer=L.geoJSON(d,{style:{color:'#ff5f5f',weight:2,fillColor:'#ff5f5f',fillOpacity:.25,opacity:.9}}).addTo(map);
-      break;
-    }catch(e){}
-  }
+    }
+  }catch(e){console.warn('[Kurzparkzonen] Fehler:',e.message);}
   await loadLadezonen(zoneBezirke);
   await loadAnrainerZonen(zoneBezirke);
 }
