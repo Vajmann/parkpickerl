@@ -100,11 +100,11 @@ header{display:flex;align-items:center;justify-content:space-between;padding:10p
 .info-row .val{font-weight:600;font-size:12px;font-family:var(--font-m);color:var(--blue)}
 .sheet-btn{border:none;border-radius:10px;padding:11px 16px;font-family:var(--font-d);font-weight:700;font-size:13px;cursor:pointer}
 .sheet-btn:active{opacity:.7}
-.toast{position:fixed;bottom:calc(110px + var(--safe-bot));left:50%;transform:translateX(-50%) translateY(20px);background:rgba(22,24,31,.95);border:1px solid var(--border);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border-radius:50px;padding:10px 20px;font-size:13px;font-family:var(--font-m);opacity:0;transition:transform .3s,opacity .3s;z-index:3000;white-space:nowrap;max-width:90vw;overflow:hidden;text-overflow:ellipsis;pointer-events:none}
+.toast{position:fixed;top:calc(80px + var(--safe-top));left:50%;transform:translateX(-50%) translateY(-10px);background:rgba(22,24,31,.95);border:1px solid rgba(255,255,255,.12);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border-radius:50px;padding:10px 20px;font-size:13px;font-family:var(--font-m);color:#fff;opacity:0;transition:transform .3s,opacity .3s;z-index:3000;white-space:nowrap;max-width:90vw;overflow:hidden;text-overflow:ellipsis;pointer-events:none}
 .toast.show{transform:translateX(-50%) translateY(0);opacity:1}
-.toast.success{border-color:var(--green);color:var(--green)}
-.toast.error{border-color:var(--red);color:var(--red)}
-.toast.info{border-color:var(--accent);color:#ff8090}
+.toast.success{border-color:rgba(255,255,255,.2);color:#fff}
+.toast.error{border-color:rgba(255,95,95,.4);color:#fff}
+.toast.info{border-color:rgba(255,255,255,.2);color:#fff}
 #offlineBanner{display:none;background:rgba(255,95,95,.1);border-bottom:1px solid rgba(255,95,95,.3);padding:8px 16px;text-align:center;font-size:12px;color:var(--red);font-family:var(--font-m);flex-shrink:0}
 #offlineBanner.visible{display:block}
 #installBanner{display:none;background:rgba(226,0,26,.06);border-bottom:1px solid rgba(226,0,26,.2);padding:10px 16px;align-items:center;gap:10px;flex-shrink:0}
