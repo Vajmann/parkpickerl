@@ -56,11 +56,12 @@ header{display:flex;align-items:center;justify-content:space-between;padding:10p
 .result-title{font-size:15px;font-weight:800;letter-spacing:-.3px}
 .result-sub{font-size:11px;color:var(--muted);font-family:var(--font-m);margin-top:2px;line-height:1.4}
 .result-close{background:rgba(255,255,255,.08);border:none;color:var(--muted);width:26px;height:26px;border-radius:50%;font-size:11px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0}
-#gpsFab{position:absolute;bottom:calc(28px + var(--safe-bot));left:60%;transform:translateX(-50%);background:linear-gradient(145deg,var(--accent2),var(--accent));color:#fff;border:none;width:66px;height:66px;border-radius:50%;font-size:26px;cursor:pointer;z-index:400;box-shadow:0 4px 24px var(--accent-glow),0 2px 8px rgba(0,0,0,.4);transition:transform .2s,box-shadow .2s;display:flex;align-items:center;justify-content:center}
-#gpsFab:active{transform:translateX(-50%) scale(.92)}
+#gpsFab{position:absolute;bottom:calc(28px + var(--safe-bot));right:16px;background:#fff;color:#1C1C1E;border:none;width:56px;height:56px;border-radius:50%;cursor:pointer;z-index:400;box-shadow:0 2px 8px rgba(0,0,0,.25),0 1px 3px rgba(0,0,0,.15);transition:transform .2s,box-shadow .2s;display:flex;align-items:center;justify-content:center}
+#gpsFab:active{transform:scale(.92)}
+@media(prefers-color-scheme:dark){#gpsFab{background:#2C2C2E;color:#fff;box-shadow:0 2px 12px rgba(0,0,0,.5)}}
 #gpsFab.loading{animation:fabpulse 1s infinite}
 @keyframes fabpulse{0%,100%{box-shadow:0 4px 24px var(--accent-glow)}50%{box-shadow:0 4px 48px rgba(226,0,26,.8),0 0 0 8px rgba(226,0,26,.1)}}
-#detailsFab{position:absolute;bottom:calc(28px + var(--safe-bot));right:16px;width:48px;height:48px;background:var(--surface);border:1px solid var(--border);border-radius:50%;font-size:20px;cursor:pointer;z-index:400;box-shadow:0 4px 16px rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;transition:transform .15s}
+#detailsFab{position:absolute;bottom:calc(28px + 56px + 12px + var(--safe-bot));right:16px;width:48px;height:48px;background:var(--surface);border:1px solid var(--border);border-radius:50%;font-size:20px;cursor:pointer;z-index:400;box-shadow:0 4px 16px rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;transition:transform .15s}
 #detailsFab:active{transform:scale(.92)}
 #mapOffline{position:absolute;inset:0;background:rgba(14,15,19,.85);display:none;align-items:center;justify-content:center;flex-direction:column;gap:12px;z-index:300;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
 #mapOffline.visible{display:flex}
@@ -130,6 +131,8 @@ header{display:flex;align-items:center;justify-content:space-between;padding:10p
 #resultCard{background:rgba(255,255,255,.92)}
 #onboarding{background:#f5f5f7}
 #legend{background:rgba(255,255,255,.92);border-color:rgba(0,0,0,.1)}
+#gpsFab{background:#fff;color:#1C1C1E;box-shadow:0 2px 8px rgba(0,0,0,.2)}
+#detailsFab{background:#fff;color:#1C1C1E;border-color:rgba(0,0,0,.12)}
 }
 </style>
 </head>
@@ -189,7 +192,11 @@ header{display:flex;align-items:center;justify-content:space-between;padding:10p
     <div class="legend-row"><span class="legend-line" style="background:#f0c844"></span>Dein Bezirk</div>
   </div>
 
-  <button id="gpsFab" onclick="getLocation()">📍</button>
+  <button id="gpsFab" onclick="getLocation()">
+    <svg id="fabIcon" viewBox="0 0 24 24" width="24" height="24" fill="currentColor">
+      <path d="M12 2L4.5 20.29l.71.71L12 18l6.79 3 .71-.71z"/>
+    </svg>
+  </button>
   <button id="detailsFab" onclick="openSheet('detailsSheet')">⚙️</button>
 </div>
 
@@ -640,10 +647,10 @@ function startTracking(){
   if(!selectedBezirk){showToast('Bitte zuerst Bezirk auswählen!','info');openBezirkSheet();return;}
   if(watchId!==null)return;
   const fab=document.getElementById('gpsFab');
-  fab.classList.add('loading');fab.textContent='📡';
+  fab.classList.add('loading');fab.innerHTML='<svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor"><path d="M12 2L4.5 20.29l.71.71L12 18l6.79 3 .71-.71z"/></svg>';
   showResult('checking','📡','GPS…','Standort wird ermittelt…');
   watchId=navigator.geolocation.watchPosition(pos=>{
-    fab.classList.remove('loading');fab.textContent='📍';
+    fab.classList.remove('loading');fab.innerHTML='<svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor"><path d="M12 2L4.5 20.29l.71.71L12 18l6.79 3 .71-.71z"/></svg>';
     const{latitude:lat,longitude:lng,accuracy:acc}=pos.coords;
     placeMarker(lat,lng,acc);savePos(lat,lng);
     if(followMode)map.setView([lat,lng],16,{animate:true});
@@ -655,11 +662,11 @@ function startTracking(){
     showResult('','🚫','GPS nicht verfügbar','Einstellungen → Datenschutz → Ortungsdienste aktivieren');
     showToast('GPS blockiert!','error');watchId=null;
   },{enableHighAccuracy:true,maximumAge:5000,timeout:15000});
-  map.on('dragstart',()=>{followMode=false;document.getElementById('gpsFab').textContent='🔒';});
+  map.on('dragstart',()=>{followMode=false;document.getElementById('gpsFab').innerHTML='<svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor" style="opacity:.5"><path d="M12 2L4.5 20.29l.71.71L12 18l6.79 3 .71-.71z"/></svg>';});
 }
 
 function getLocation(){
-  followMode=true;document.getElementById('gpsFab').textContent='📍';
+  followMode=true;document.getElementById('gpsFab').innerHTML='<svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor"><path d="M12 2L4.5 20.29l.71.71L12 18l6.79 3 .71-.71z"/></svg>';
   if(watchId===null){startTracking();}
   else if(lastLat!==null){map.setView([lastLat,lastLng],16,{animate:true});}
 }
@@ -808,6 +815,7 @@ if('serviceWorker'in navigator){
         reg.update();
       })
       .catch(e=>console.warn('[SW] Fehler (normal bei file://):',e.message));
+
   }catch(e){console.warn('[SW] Blob-Fehler:',e);}
 }
 
