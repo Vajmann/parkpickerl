@@ -568,7 +568,7 @@ async function loadAnrainerZonen(bez){
       }
       anrainerLayer.addTo(map);
       document.getElementById('anrainerVal').textContent=count>0?`${count} Zonen (OGD Wien)`:'Keine im Bezirk';
-      if(count>0)showToast(`<span style="display:inline-flex;align-items:center;justify-content:center;background:#AF52DE;border-radius:6px;width:18px;height:18px;font-size:11px;font-weight:900;color:#fff;margin-right:6px;flex-shrink:0">P</span>${count} Anrainerparkplätze geladen`,'success');
+      if(count>0)showToast(`<span style="display:inline-flex;align-items:center;gap:8px"><span style="display:inline-flex;align-items:center;justify-content:center;background:#AF52DE;border-radius:6px;width:18px;height:18px;font-size:11px;font-weight:900;color:#fff;flex-shrink:0">P</span><span>${count} Anrainerparkplätze geladen</span></span>`,'success',true);
       else showToast('ℹ️ Keine Anrainerzonen in diesem Bezirk','info');
       return;
     }catch(e){
@@ -722,7 +722,7 @@ function sendNotif(title,body){if(Notification?.permission==='granted')new Notif
 function updateNotifStatus(){document.getElementById('notifStatusVal').textContent=!('Notification'in window)?'Nicht unterstützt':Notification.permission==='granted'?'Aktiv ✅':'Inaktiv';}
 
 let toastTimer;
-function showToast(msg,type='info'){const t=document.getElementById('toast');t.innerHTML=`<span style="display:inline-flex;align-items:center">${msg}</span>`;t.className=`toast ${type} show`;clearTimeout(toastTimer);toastTimer=setTimeout(()=>t.classList.remove('show'),3000);}
+function showToast(msg,type='info',isHtml=false){const t=document.getElementById('toast');if(isHtml){t.innerHTML=msg;}else{t.textContent=msg;}t.className=`toast ${type} show`;clearTimeout(toastTimer);toastTimer=setTimeout(()=>t.classList.remove('show'),3000);}
 
 function updateOnline(){const o=!navigator.onLine;document.getElementById('offlineBanner').classList.toggle('visible',o);document.getElementById('mapOffline').classList.toggle('visible',o);}
 window.addEventListener('online',updateOnline);window.addEventListener('offline',updateOnline);updateOnline();
