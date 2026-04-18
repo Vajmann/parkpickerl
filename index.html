@@ -58,10 +58,10 @@ header{display:flex;align-items:center;justify-content:space-between;padding:10p
 .result-close{background:rgba(255,255,255,.08);border:none;color:var(--muted);width:26px;height:26px;border-radius:50%;font-size:11px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0}
 #gpsFab{position:absolute;bottom:calc(28px + var(--safe-bot));right:16px;background:#fff;color:#1C1C1E;border:none;width:56px;height:56px;border-radius:50%;cursor:pointer;z-index:400;box-shadow:0 2px 8px rgba(0,0,0,.25),0 1px 3px rgba(0,0,0,.15);transition:transform .2s,box-shadow .2s;display:flex;align-items:center;justify-content:center}
 #gpsFab:active{transform:scale(.92)}
-@media(prefers-color-scheme:dark){#gpsFab{background:#2C2C2E;color:#fff;box-shadow:0 2px 12px rgba(0,0,0,.5)}}
+@media(prefers-color-scheme:dark){#gpsFab,#detailsFab{background:#2C2C2E;color:#fff;box-shadow:0 2px 12px rgba(0,0,0,.5)}}
 #gpsFab.loading{animation:fabpulse 1s infinite}
 @keyframes fabpulse{0%,100%{box-shadow:0 4px 24px var(--accent-glow)}50%{box-shadow:0 4px 48px rgba(226,0,26,.8),0 0 0 8px rgba(226,0,26,.1)}}
-#detailsFab{position:absolute;bottom:calc(28px + 56px + 12px + var(--safe-bot));right:16px;width:48px;height:48px;background:var(--surface);border:1px solid var(--border);border-radius:50%;font-size:20px;cursor:pointer;z-index:400;box-shadow:0 4px 16px rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;transition:transform .15s}
+#detailsFab{position:absolute;bottom:calc(28px + 56px + 12px + var(--safe-bot));right:16px;width:56px;height:56px;background:#fff;color:#1C1C1E;border:none;border-radius:50%;cursor:pointer;z-index:400;box-shadow:0 2px 8px rgba(0,0,0,.25),0 1px 3px rgba(0,0,0,.15);display:flex;align-items:center;justify-content:center;transition:transform .15s}
 #detailsFab:active{transform:scale(.92)}
 #mapOffline{position:absolute;inset:0;background:rgba(14,15,19,.85);display:none;align-items:center;justify-content:center;flex-direction:column;gap:12px;z-index:300;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
 #mapOffline.visible{display:flex}
@@ -132,7 +132,7 @@ header{display:flex;align-items:center;justify-content:space-between;padding:10p
 #onboarding{background:#f5f5f7}
 #legend{background:rgba(255,255,255,.92);border-color:rgba(0,0,0,.1)}
 #gpsFab{background:#fff;color:#1C1C1E;box-shadow:0 2px 8px rgba(0,0,0,.2)}
-#detailsFab{background:#fff;color:#1C1C1E;border-color:rgba(0,0,0,.12)}
+#detailsFab{background:#fff;color:#1C1C1E;box-shadow:0 2px 8px rgba(0,0,0,.2)}
 }
 </style>
 </head>
@@ -197,7 +197,11 @@ header{display:flex;align-items:center;justify-content:space-between;padding:10p
       <path d="M12 2L4.5 20.29l.71.71L12 18l6.79 3 .71-.71z"/>
     </svg>
   </button>
-  <button id="detailsFab" onclick="openSheet('detailsSheet')">⚙️</button>
+  <button id="detailsFab" onclick="openSheet('detailsSheet')">
+    <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor">
+      <path d="M19.14 12.94c.04-.3.06-.61.06-.94s-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.07.62-.07.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/>
+    </svg>
+  </button>
 </div>
 
 <div class="sheet-overlay" id="sheetOverlay" onclick="closeSheet()"></div>
