@@ -56,12 +56,12 @@ header{display:flex;align-items:center;justify-content:space-between;padding:10p
 .result-title{font-size:15px;font-weight:800;letter-spacing:-.3px}
 .result-sub{font-size:11px;color:var(--muted);font-family:var(--font-m);margin-top:2px;line-height:1.4}
 .result-close{background:rgba(255,255,255,.08);border:none;color:var(--muted);width:26px;height:26px;border-radius:50%;font-size:11px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0}
-#gpsFab{position:absolute;bottom:calc(8px + 56px + 10px + var(--safe-bot));right:16px;background:#fff;color:#1C1C1E;border:none;width:56px;height:56px;border-radius:50%;cursor:pointer;z-index:400;box-shadow:0 2px 8px rgba(0,0,0,.25),0 1px 3px rgba(0,0,0,.15);transition:transform .2s,box-shadow .2s;display:flex;align-items:center;justify-content:center}
+#gpsFab{position:absolute;bottom:calc(28px + 56px + 10px + var(--safe-bot));right:16px;background:#fff;color:#1C1C1E;border:none;width:56px;height:56px;border-radius:50%;cursor:pointer;z-index:400;box-shadow:0 2px 8px rgba(0,0,0,.25),0 1px 3px rgba(0,0,0,.15);transition:transform .2s,box-shadow .2s;display:flex;align-items:center;justify-content:center}
 #gpsFab:active{transform:scale(.92)}
 @media(prefers-color-scheme:dark){#gpsFab,#detailsFab{background:#2C2C2E;color:#fff;box-shadow:0 2px 12px rgba(0,0,0,.5)}}
 #gpsFab.loading{animation:fabpulse 1s infinite}
 @keyframes fabpulse{0%,100%{box-shadow:0 4px 24px var(--accent-glow)}50%{box-shadow:0 4px 48px rgba(226,0,26,.8),0 0 0 8px rgba(226,0,26,.1)}}
-#detailsFab{position:absolute;bottom:calc(8px + var(--safe-bot));right:16px;width:56px;height:56px;background:#fff;color:#1C1C1E;border:none;border-radius:50%;cursor:pointer;z-index:400;box-shadow:0 2px 8px rgba(0,0,0,.25),0 1px 3px rgba(0,0,0,.15);display:flex;align-items:center;justify-content:center;transition:transform .15s}
+#detailsFab{position:absolute;bottom:calc(28px + var(--safe-bot));right:16px;width:56px;height:56px;background:#fff;color:#1C1C1E;border:none;border-radius:50%;cursor:pointer;z-index:400;box-shadow:0 2px 8px rgba(0,0,0,.25),0 1px 3px rgba(0,0,0,.15);display:flex;align-items:center;justify-content:center;transition:transform .15s}
 #detailsFab:active{transform:scale(.92)}
 #mapOffline{position:absolute;inset:0;background:rgba(14,15,19,.85);display:none;align-items:center;justify-content:center;flex-direction:column;gap:12px;z-index:300;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
 #mapOffline.visible{display:flex}
