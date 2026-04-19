@@ -338,6 +338,20 @@ let map,userMarker,highlightLayer,zoneLayer,ladezonenLayer,anrainerLayer;
 let selectedBezirk=null,activeSheet=null,swipeStartY=0;
 let watchId=null,lastLat=null,lastLng=null,followMode=true;
 
+// ── Park-Benachrichtigung ──
+let parkTimer=null;           // Timer für Stillstand-Erkennung
+let lastZoneResult=null;      // Letztes Zonen-Ergebnis
+let parkedLat=null,parkedLng=null; // Position wo Auto gestoppt hat
+let lastHighSpeed=0;          // Zeitstempel der letzten Geschwindigkeit > 15 km/h
+let lastSpeed=0;              // Letzte bekannte Geschwindigkeit in km/h
+// Logik:
+// War in letzten 60 Sek schneller als 15 km/h → Ampel-Modus → Timer: 60 Sek
+// War langsam (Parkmanöver/Rückwärts) → Timer: 25 Sek
+
+// Gespeicherte Zonen-Daten für Proximity-Check
+let ladezonenData=[];   // [{coords, zeitraum, ausnahme, adresse}]
+let anrainerData=[];    // [{coords, adresse}]
+
 // ── Onboarding ──
 function buildGrid(id,onSelect){
   const g=document.getElementById(id);g.innerHTML='';
@@ -453,8 +467,8 @@ function highlightBezirk(key){
   key=String(key);
   if(highlightLayer){map.removeLayer(highlightLayer);highlightLayer=null;}
   if(zoneLayer){map.removeLayer(zoneLayer);zoneLayer=null;}
-  if(ladezonenLayer){map.removeLayer(ladezonenLayer);ladezonenLayer=null;}
-  if(anrainerLayer){map.removeLayer(anrainerLayer);anrainerLayer=null;}
+  if(ladezonenLayer){map.removeLayer(ladezonenLayer);ladezonenLayer=null;}ladezonenData=[];
+  if(anrainerLayer){map.removeLayer(anrainerLayer);anrainerLayer=null;}anrainerData=[];
   if(!BEZIRKE_GEO){showToast('Bezirksgrenzen laden…','info');return;}
   const zoneBezirke=getZoneBezirke(key);
   const features=zoneBezirke
@@ -514,6 +528,8 @@ async function loadLadezonen(bezirke){
         if(coords.length<2)continue;
         const popup=`<b>🚚 Ladezone</b>`+(cols[addrIdx]?`<br>📍 ${cols[addrIdx]}`:'')+(cols[zeitraumIdx]?`<br>🕐 ${cols[zeitraumIdx]}`:'')+(cols[ausnahmeIdx]?`<br>ℹ️ ${cols[ausnahmeIdx]}`:'');
         L.polyline(coords,{color:'#007AFF',weight:5,opacity:0.9,lineCap:'round',lineJoin:'round'}).bindPopup(popup).addTo(ladezonenLayer);
+        // Daten für Park-Benachrichtigung speichern
+        ladezonenData.push({coords,zeitraum:cols[zeitraumIdx]||'',ausnahme:cols[ausnahmeIdx]||'',adresse:cols[addrIdx]||''});
         count++;
       }
       ladezonenLayer.addTo(map);
@@ -564,6 +580,8 @@ async function loadAnrainerZonen(bez){
         const info=infoIdx>=0?cols[infoIdx]||'':'';
         const popup=`<b>🅿️ AnrainerInnen-Parkplatz</b>`+(addr?`<br>📍 ${addr}`:'')+(stellpl?`<br>🚗 ${stellpl} Stellplätze`:'')+(ausnahme?`<br>📋 ${ausnahme}`:'')+(info&&info!=='null'&&info.startsWith('http')?`<br><a href="${info}" target="_blank" style="color:#AF52DE">ℹ️ Mehr Info</a>`:'');
         L.polyline(coords,{color:'#AF52DE',weight:5,opacity:0.9,lineCap:'round',lineJoin:'round'}).bindPopup(popup).addTo(anrainerLayer);
+        // Daten für Park-Benachrichtigung speichern
+        anrainerData.push({coords,adresse:addr});
         count++;
       }
       anrainerLayer.addTo(map);
@@ -658,9 +676,33 @@ function startTracking(){
     const{latitude:lat,longitude:lng,accuracy:acc}=pos.coords;
     placeMarker(lat,lng,acc);savePos(lat,lng);
     if(followMode)map.setView([lat,lng],16,{animate:true});
+    // Geschwindigkeit ermitteln (GPS liefert m/s → umrechnen in km/h)
+    const speedMs=pos.coords.speed||0;
+    const speedKmh=speedMs*3.6;
+    lastSpeed=speedKmh;
+
+    // Merken wann zuletzt schnell gefahren (>15 km/h)
+    if(speedKmh>15)lastHighSpeed=Date.now();
+
     const moved=lastLat===null||distanceM(lat,lng,lastLat,lastLng)>30;
     lastLat=lat;lastLng=lng;
-    if(moved)checkPoint(lat,lng);
+
+    if(moved){
+      checkPoint(lat,lng);
+      // Bewegung erkannt → Park-Timer zurücksetzen
+      if(parkTimer){clearTimeout(parkTimer);parkTimer=null;}
+      parkedLat=lat;parkedLng=lng;
+
+      // Intelligente Wartezeit:
+      // War in letzten 60 Sek schneller als 15 km/h → Ampel-Modus → 60 Sek warten
+      // Sonst (langsames Parkmanöver/Rückwärts) → 25 Sek warten
+      const secSinceHighSpeed=(Date.now()-lastHighSpeed)/1000;
+      const waitMs=secSinceHighSpeed<60 ? 60000 : 25000;
+      const modeLabel=secSinceHighSpeed<60?'Ampel-Modus (60s)':'Park-Modus (25s)';
+      console.log('[ParkTimer] Starte Timer:',modeLabel,'| Letzte Geschw:',speedKmh.toFixed(1),'km/h');
+
+      parkTimer=setTimeout(()=>checkParkNotification(lat,lng),waitMs);
+    }
   },err=>{
     fab.classList.remove('loading');fab.textContent='📍';
     showResult('','🚫','GPS nicht verfügbar','Einstellungen → Datenschutz → Ortungsdienste aktivieren');
@@ -673,6 +715,78 @@ function getLocation(){
   followMode=true;document.getElementById('gpsFab').innerHTML='<svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor"><path d="M12 2L4.5 20.29l.71.71L12 18l6.79 3 .71-.71z"/></svg>';
   if(watchId===null){startTracking();}
   else if(lastLat!==null){map.setView([lastLat,lastLng],16,{animate:true});}
+}
+
+// ── Park-Benachrichtigung nach intelligentem Stillstand ──
+function checkParkNotification(lat,lng){
+  // Letzte Sicherheitsprüfung: wenn wieder schnell → abbrechen
+  if(lastSpeed>8){
+    console.log('[ParkTimer] Abgebrochen – Geschwindigkeit zu hoch:',lastSpeed,'km/h');
+    return;
+  }
+  // Prüfen ob noch am gleichen Ort (max 20m Abweichung)
+  if(parkedLat&&distanceM(lat,lng,parkedLat,parkedLng)>20){
+    console.log('[ParkTimer] Abgebrochen – Position geändert');
+    return;
+  }
+  // Prüfe ob in Kurzparkzone
+  const resultTitle=document.getElementById('resultTitle').textContent;
+  const resultCard=document.getElementById('resultCard');
+
+  // Kurzparkzone
+  if(resultCard.classList.contains('inside')){
+    sendParkNotif(
+      '🅿️ Kurzparkzone – Gebührenpflichtig',
+      'Maximale Parkdauer: 1,5 Stunden. Bitte Parkschein lösen!'
+    );
+    return;
+  }
+
+  // Ladezone prüfen – nähe zu einer Ladezone?
+  const nearLadezone=findNearestZone(lat,lng,ladezonenData);
+  if(nearLadezone){
+    const zeitraum=nearLadezone.zeitraum||'';
+    const ausnahme=nearLadezone.ausnahme||'';
+    let msg='';
+    if(ausnahme&&ausnahme.length>3){
+      msg=`Ausnahme: ${ausnahme}`;
+    } else if(zeitraum&&zeitraum.length>3){
+      msg=`Ladezeit: ${zeitraum}`;
+    } else {
+      msg='Nur für Ladefahrzeuge!';
+    }
+    sendParkNotif('🚚 Achtung – Ladezone!', msg);
+    return;
+  }
+
+  // Anrainerzone prüfen
+  const nearAnrainer=findNearestZone(lat,lng,anrainerData);
+  if(nearAnrainer){
+    const adresse=nearAnrainer.adresse||'';
+    sendParkNotif(
+      '🟣 Anrainerzone',
+      'Nur für Anrainer mit Parkberechtigung!'+(adresse?` (${adresse})`:'')
+    );
+    return;
+  }
+}
+
+// Prüft ob Punkt nahe einer Zone ist (max 30m)
+function findNearestZone(lat,lng,zoneList){
+  for(const zone of zoneList){
+    for(const [zLat,zLng] of zone.coords){
+      if(distanceM(lat,lng,zLat,zLng)<30)return zone;
+    }
+  }
+  return null;
+}
+
+// Park-Benachrichtigung senden
+function sendParkNotif(title,body){
+  showToast(title,'info');
+  if(Notification?.permission==='granted'){
+    new Notification(title,{body,icon:'/icon-192.png'});
+  }
 }
 
 function distanceM(lat1,lng1,lat2,lng2){
