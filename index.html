@@ -653,11 +653,11 @@ async function checkPoint(lat,lng){
   const zoneLabel=ZONE_META[String(selectedBezirk)]?.short||`${selectedBezirk}. Bezirk`;
   if(match.length){
     showResult('inside','✅','Pickerlzone gültig!',`${zoneLabel} – Pickerl gilt hier`);
-    haptic('success');sendNotif('Gültig!',`${zoneLabel} Pickerl gilt hier.`);
+    haptic('success');
   }else{
     const o=getBez(inZone[0]);
     showResult('outside','❌','Andere Pickerlzone',o?`Zone des ${o}. Bezirks`:'Andere Pickerlzone');
-    haptic('error');sendNotif('❌ Falsche Zone',o?`Zone ${o}. Bezirk`:'Andere Zone');
+    haptic('error');
   }
 }
 
