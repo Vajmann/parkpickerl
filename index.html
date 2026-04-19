@@ -344,7 +344,10 @@ let lastZoneResult=null;      // Letztes Zonen-Ergebnis
 let parkedLat=null,parkedLng=null; // Position wo Auto gestoppt hat
 let lastHighSpeed=0;          // Zeitstempel der letzten Geschwindigkeit > 15 km/h
 let lastSpeed=0;              // Letzte bekannte Geschwindigkeit in km/h
+let carModeConfirmed=false;   // true wenn mindestens einmal > 25 km/h → Auto bestätigt
 // Logik:
+// Nur Benachrichtigung wenn carModeConfirmed=true (mind. einmal > 25 km/h)
+// → Zu Fuß/Fahrrad langsam → nie Benachrichtigungen
 // War in letzten 60 Sek schneller als 15 km/h → Ampel-Modus → Timer: 60 Sek
 // War langsam (Parkmanöver/Rückwärts) → Timer: 25 Sek
 
@@ -684,6 +687,13 @@ function startTracking(){
     // Merken wann zuletzt schnell gefahren (>15 km/h)
     if(speedKmh>15)lastHighSpeed=Date.now();
 
+    // Auto-Modus bestätigen wenn >25 km/h → beweist dass mit Auto unterwegs
+    if(speedKmh>25&&!carModeConfirmed){
+      carModeConfirmed=true;
+      console.log('[ParkSense] Auto-Modus aktiviert –',speedKmh.toFixed(1),'km/h erkannt');
+      showToast('🚗 Auto-Modus aktiv – ParkSense aktiviert','info');
+    }
+
     const moved=lastLat===null||distanceM(lat,lng,lastLat,lastLng)>30;
     lastLat=lat;lastLng=lng;
 
@@ -696,12 +706,16 @@ function startTracking(){
       // Intelligente Wartezeit:
       // War in letzten 60 Sek schneller als 15 km/h → Ampel-Modus → 60 Sek warten
       // Sonst (langsames Parkmanöver/Rückwärts) → 25 Sek warten
-      const secSinceHighSpeed=(Date.now()-lastHighSpeed)/1000;
-      const waitMs=secSinceHighSpeed<60 ? 60000 : 25000;
-      const modeLabel=secSinceHighSpeed<60?'Ampel-Modus (60s)':'Park-Modus (25s)';
-      console.log('[ParkTimer] Starte Timer:',modeLabel,'| Letzte Geschw:',speedKmh.toFixed(1),'km/h');
-
-      parkTimer=setTimeout(()=>checkParkNotification(lat,lng),waitMs);
+      // Nur starten wenn Auto-Modus bestätigt (mind. einmal >25 km/h)
+      if(!carModeConfirmed){
+        console.log('[ParkSense] Ignoriert – kein Auto-Modus (max Geschw <25 km/h)');
+      } else {
+        const secSinceHighSpeed=(Date.now()-lastHighSpeed)/1000;
+        const waitMs=secSinceHighSpeed<60 ? 60000 : 25000;
+        const modeLabel=secSinceHighSpeed<60?'Ampel-Modus (60s)':'Park-Modus (25s)';
+        console.log('[ParkTimer] Starte Timer:',modeLabel,'| Letzte Geschw:',speedKmh.toFixed(1),'km/h');
+        parkTimer=setTimeout(()=>checkParkNotification(lat,lng),waitMs);
+      }
     }
   },err=>{
     fab.classList.remove('loading');fab.textContent='📍';
