@@ -703,18 +703,22 @@ function startTracking(){
       if(parkTimer){clearTimeout(parkTimer);parkTimer=null;}
       parkedLat=lat;parkedLng=lng;
 
-      // Intelligente Wartezeit:
-      // War in letzten 60 Sek schneller als 15 km/h → Ampel-Modus → 60 Sek warten
-      // Sonst (langsames Parkmanöver/Rückwärts) → 25 Sek warten
       // Nur starten wenn Auto-Modus bestätigt (mind. einmal >25 km/h)
-      if(!carModeConfirmed){
-        console.log('[ParkSense] Ignoriert – kein Auto-Modus (max Geschw <25 km/h)');
-      } else {
+      if(carModeConfirmed){
+        // Intelligente Wartezeit:
+        // War in letzten 60 Sek schneller als 15 km/h → Ampel-Modus → 60 Sek warten
+        // Sonst (langsames Parkmanöver/Rückwärts) → 25 Sek warten
         const secSinceHighSpeed=(Date.now()-lastHighSpeed)/1000;
         const waitMs=secSinceHighSpeed<60 ? 60000 : 25000;
         const modeLabel=secSinceHighSpeed<60?'Ampel-Modus (60s)':'Park-Modus (25s)';
         console.log('[ParkTimer] Starte Timer:',modeLabel,'| Letzte Geschw:',speedKmh.toFixed(1),'km/h');
         parkTimer=setTimeout(()=>checkParkNotification(lat,lng),waitMs);
+      } else {
+        // Noch nicht Auto-Modus – aber vielleicht wird er noch aktiviert
+        // Timer mit längerer Wartezeit starten, wird abgebrochen wenn kein Auto
+        parkTimer=setTimeout(()=>{
+          if(carModeConfirmed)checkParkNotification(lat,lng);
+        },90000); // 90 Sek Fallback
       }
     }
   },err=>{
@@ -747,8 +751,9 @@ function checkParkNotification(lat,lng){
   const resultTitle=document.getElementById('resultTitle').textContent;
   const resultCard=document.getElementById('resultCard');
 
-  // Kurzparkzone
-  if(resultCard.classList.contains('inside')){
+  // Kurzparkzone: gilt bei 'inside' (eigene Zone) UND 'outside' (andere Zone)
+  // Beide Fälle bedeuten: du stehst in einer gebührenpflichtigen Zone!
+  if(resultCard.classList.contains('inside')||resultCard.classList.contains('outside')){
     sendParkNotif(
       '🅿️ Kurzparkzone – Gebührenpflichtig',
       'Maximale Parkdauer: 1,5 Stunden. Bitte Parkschein lösen!'
