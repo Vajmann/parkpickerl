@@ -675,8 +675,11 @@ function startTracking(){
   fab.classList.add('loading');fab.innerHTML='<svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor"><path d="M12 2L4.5 20.29l.71.71L12 18l6.79 3 .71-.71z"/></svg>';
   showResult('checking','📡','GPS…','Standort wird ermittelt…');
   watchId=navigator.geolocation.watchPosition(pos=>{
-    fab.classList.remove('loading');fab.innerHTML='<svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor"><path d="M12 2L4.5 20.29l.71.71L12 18l6.79 3 .71-.71z"/></svg>';
+    fab.classList.remove('loading');
+    fab.innerHTML='<svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor"><path d="M12 2L4.5 20.29l.71.71L12 18l6.79 3 .71-.71z"/></svg>';
     const{latitude:lat,longitude:lng,accuracy:acc}=pos.coords;
+    // Sehr ungenaue Positionen ignorieren (>200m = GPS noch nicht eingerastet)
+    if(acc&&acc>200){console.log('[GPS] Zu ungenau:',acc,'m – warte...');return;}
     placeMarker(lat,lng,acc);savePos(lat,lng);
     if(followMode)map.setView([lat,lng],16,{animate:true});
     // Geschwindigkeit ermitteln (GPS liefert m/s → umrechnen in km/h)
@@ -722,10 +725,24 @@ function startTracking(){
       }
     }
   },err=>{
-    fab.classList.remove('loading');fab.textContent='📍';
-    showResult('','🚫','GPS nicht verfügbar','Einstellungen → Datenschutz → Ortungsdienste aktivieren');
-    showToast('GPS blockiert!','error');watchId=null;
-  },{enableHighAccuracy:true,maximumAge:5000,timeout:15000});
+    fab.classList.remove('loading');
+    fab.innerHTML='<svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor"><path d="M12 2L4.5 20.29l.71.71L12 18l6.79 3 .71-.71z"/></svg>';
+    watchId=null;
+    console.warn('[GPS] Fehler Code:',err.code,'–',err.message);
+    if(err.code===1){
+      // Permission denied
+      showResult('','🚫','GPS gesperrt','Einstellungen → Datenschutz → Ortungsdienste aktivieren');
+      showToast('GPS-Berechtigung verweigert','error');
+    } else if(err.code===2){
+      // Position unavailable - automatisch nochmal versuchen
+      showResult('','📡','GPS sucht…','Kurz ins Freie gehen hilft');
+      showToast('GPS Signal schwach – nochmal tippen','error');
+    } else if(err.code===3){
+      // Timeout - nochmal versuchen
+      showResult('','⏳','GPS Timeout','Nochmal tippen oder ins Freie gehen');
+      showToast('GPS Timeout – nochmal tippen','error');
+    }
+  },{enableHighAccuracy:true,maximumAge:0,timeout:30000});
   map.on('dragstart',()=>{followMode=false;document.getElementById('gpsFab').innerHTML='<svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor" style="opacity:.5"><path d="M12 2L4.5 20.29l.71.71L12 18l6.79 3 .71-.71z"/></svg>';});
 }
 
