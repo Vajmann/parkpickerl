@@ -642,13 +642,31 @@ async function loadZones(key,bezFeatures){
 // ════════════════════════════════════════════════
 function extractKurzparkPunkte(geoJsonData){
   kurzparkPunkte=[];
-  if(!geoJsonData?.features)return;
+  if(!geoJsonData||!geoJsonData.features)return;
   for(const f of geoJsonData.features){
     const g=f.geometry;if(!g)continue;
-    const rings=g.type==='Polygon'?g.coordinates:g.type==='MultiPolygon'?g.coordinates.flat():[];
-    for(const ring of rings){
-      for(const [lng,lat] of ring){kurzparkPunkte.push([lat,lng]);}
+    // Kurzparkzonen kommen als Polygone (Flaechen) ODER LineStrings (Streifen)
+    if(g.type==='Polygon'){
+      for(const ring of g.coordinates){
+        for(const [lng,lat] of ring){kurzparkPunkte.push([lat,lng]);}
+      }
+    } else if(g.type==='MultiPolygon'){
+      for(const poly of g.coordinates){
+        for(const ring of poly){
+          for(const [lng,lat] of ring){kurzparkPunkte.push([lat,lng]);}
+        }
+      }
+    } else if(g.type==='LineString'){
+      for(const [lng,lat] of g.coordinates){kurzparkPunkte.push([lat,lng]);}
+    } else if(g.type==='MultiLineString'){
+      for(const line of g.coordinates){
+        for(const [lng,lat] of line){kurzparkPunkte.push([lat,lng]);}
+      }
     }
+  }
+  // Punkte auf max 5000 reduzieren (Performance) - jeden 2. nehmen wenn zu viele
+  if(kurzparkPunkte.length>5000){
+    kurzparkPunkte=kurzparkPunkte.filter((_,i)=>i%2===0);
   }
   console.log('[Kurzpark] Punkte extrahiert:',kurzparkPunkte.length);
 }
@@ -663,44 +681,74 @@ async function loadStrassennetz(bezirke){
   document.getElementById('strassenVal').textContent='laedt...';
   showToast('Strassennetz wird geladen...','info');
   if(!highlightLayer){document.getElementById('strassenVal').textContent='Bezirk nicht geladen';return;}
+
+  // Bezirkspolygon-Punkte fuer Point-in-Polygon Test sammeln
+  const bezirkRings=[];
+  highlightLayer.eachLayer(l=>{
+    const geo=l.toGeoJSON();
+    const geom=geo.geometry;
+    if(geom.type==='Polygon')bezirkRings.push(geom.coordinates[0]);
+    else if(geom.type==='MultiPolygon')geom.coordinates.forEach(p=>bezirkRings.push(p[0]));
+  });
+
   const bounds=highlightLayer.getBounds();
   const s=bounds.getSouth().toFixed(5);
   const w=bounds.getWest().toFixed(5);
   const n=bounds.getNorth().toFixed(5);
   const e=bounds.getEast().toFixed(5);
+
   const query=`[out:json][timeout:30];(way["highway"~"^(residential|primary|secondary|tertiary|unclassified|living_street|pedestrian|service)$"](${s},${w},${n},${e}););out geom;`;
   const url=`https://overpass-api.de/api/interpreter?data=${encodeURIComponent(query)}`;
+
   try{
     const res=await fetchWithTimeout(url,30000);
     if(!res.ok)throw new Error('HTTP '+res.status);
     const data=await res.json();
     if(!data.elements||!data.elements.length)throw new Error('Keine Strassen');
+
     strassenLayer=L.layerGroup();
     const strassenMap={};
     let count=0;
+
     for(const way of data.elements){
       if(way.type!=='way'||!way.geometry||way.geometry.length<2)continue;
+
+      // Mittelpunkt der Strasse berechnen
+      const midPt=way.geometry[Math.floor(way.geometry.length/2)];
+
+      // Nur Strassen INNERHALB des Bezirkspolygons anzeigen
+      const inBezirk=bezirkRings.some(ring=>pointInRing([midPt.lon,midPt.lat],ring));
+      if(!inBezirk)continue;
+
       const coords=way.geometry.map(p=>[p.lat,p.lon]);
       const name=(way.tags&&way.tags.name)?way.tags.name:'Unbenannte Strasse';
+
+      // Dichte: Strassenpunkte nahe Kurzparkzonen-Linienpunkte pruefen
       let treffer=0;
       for(const[sLat,sLng] of coords){
-        if(kurzparkPunkte.some(([zLat,zLng])=>distanceM(sLat,sLng,zLat,zLng)<30))treffer++;
+        if(kurzparkPunkte.some(([zLat,zLng])=>distanceM(sLat,sLng,zLat,zLng)<40)){
+          treffer++;
+        }
       }
       const dichte=coords.length>0?treffer/coords.length:0;
+
       if(!strassenMap[name]){strassenMap[name]={name,coords,dichte,cnt:1};}
       else{const sm=strassenMap[name];sm.dichte=(sm.dichte*sm.cnt+dichte)/(sm.cnt+1);sm.cnt++;}
+
       const col=dichte>0.6?'#ff5f5f':dichte>0.2?'#f0c844':'#4a9eff';
       L.polyline(coords,{color:col,weight:dichte>0.4?3.5:2,opacity:0.85})
         .bindPopup('<b>'+name+'</b><br>Parkdichte: '+Math.round(dichte*100)+'%<br><small style="color:#888">Rot=hoch / Gelb=mittel / Blau=niedrig</small>')
         .addTo(strassenLayer);
       count++;
     }
+
     strassenLayer.addTo(map);
     strassenData=Object.values(strassenMap).sort((a,b)=>b.dichte-a.dichte);
-    document.getElementById('strassenVal').textContent=count+' Segmente (OSM)';
+    document.getElementById('strassenVal').textContent=count+' Strassen';
     saveZeitreihe(selectedBezirk,strassenData);
     if(dichteVisible)renderDichtePanel();
-    showToast(count+' Strassen geladen','success');
+    showToast(count+' Strassen im Bezirk geladen','success');
+
   }catch(e){
     console.warn('[Strassennetz] Fehler:',e.message);
     document.getElementById('strassenVal').textContent='Nicht verfuegbar';
