@@ -816,20 +816,29 @@ function loadZeitreihe(bezirk){
 // ════════════════════════════════════════════════
 // NEU: PARKDICHTE DASHBOARD
 // ════════════════════════════════════════════════
+// Merkt sich welche Karte VOR dem Oeffnen des Panels aktiv war
+let tileBeforePanel='voyager';
+
 function toggleDichte(){
   dichteVisible=!dichteVisible;
   const panel=document.getElementById('dichtePanel');
   const fab=document.getElementById('dichteFab');
   panel.classList.toggle('visible',dichteVisible);
   fab.classList.toggle('active',dichteVisible);
-  // Karte wechseln
   if(dichteVisible){
+    // Panel oeffnen: vorherige Karte merken, auf Light wechseln
+    tileBeforePanel=currentTileMode;
     switchTiles('light');
     renderDichtePanel();
-    // Ergebnis-Karte verstecken um Platz zu sparen
     hideResult();
   }else{
-    switchTiles('voyager');
+    // Panel schliessen: NUR zurueckwechseln wenn Nutzer keine Karte manuell gewaehlt hat
+    // d.h. wenn aktuelle Karte noch 'light' ist (Standard-Analyse-Karte)
+    // Hat der Nutzer z.B. Luftbild gewaehlt, bleibt Luftbild aktiv!
+    if(currentTileMode==='light'){
+      switchTiles(tileBeforePanel);
+    }
+    // Sonst: aktuelle Karte (z.B. Luftbild) bleibt aktiv
   }
 }
 
