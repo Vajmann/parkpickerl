@@ -533,7 +533,7 @@ function finishOnboarding(){
   localStorage.setItem(STORAGE.ONBOARDED,'1');
   selectBezirk(bez);
   document.getElementById('onboarding').classList.add('hidden');
-  showToast('Gespeichert! Jetzt GPS-Button tippen 📍','success');
+  showToast('Bezirk gespeichert! Karte wird geladen…','success');
 }
 
 // ════════════════════════════════════════════════
@@ -557,7 +557,7 @@ function selectBezirk(key,hl=true){
   document.querySelectorAll('#bezirkGridSheet .bez-option').forEach(b=>b.classList.toggle('selected',b.dataset.nr===key));
   if(hl)highlightBezirk(key);
   if(watchId!==null&&lastLat!==null){checkPoint(lastLat,lastLng);}
-  else{setTimeout(startTracking,500);}
+  // GPS nur wenn bereits aktiv – Nutzer tippt selbst auf GPS-Button
 }
 
 // ════════════════════════════════════════════════
@@ -709,10 +709,10 @@ async function loadStrassennetz(bezirke){
         strassenData.push({name,coords,bezirk,laenge,dichte});
 
         // Farbe je Dichte
-        const col=dichte>0.7?'#ff5f5f':dichte>0.3?'#f0c844':'#888';
-        const opacity=dichte>0.1?0.7:0.3;
+        const col=dichte>0.6?'#ff5f5f':dichte>0.2?'#f0c844':'#4a9eff';
+        const opacity=0.85;
 
-        L.polyline(coords,{color:col,weight:dichte>0.3?2.5:1.5,opacity})
+        L.polyline(coords,{color:col,weight:dichte>0.4?3.5:2,opacity})
           .bindPopup(`<b>🛣 ${name}</b><br>Bezirk: ${bezirk}<br>Länge: ${Math.round(laenge)}m<br>Parkdichte: ${Math.round(dichte*100)}%`)
           .addTo(strassenLayer);
         count++;
