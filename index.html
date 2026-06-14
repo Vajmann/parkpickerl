@@ -286,19 +286,34 @@ header{display:flex;align-items:center;justify-content:space-between;padding:10p
 
     <!-- Kartenauswahl -->
     <div id="tabKarte" style="display:none">
+      <div style="font-size:11px;color:var(--muted);margin-bottom:10px;font-family:var(--font-m)">Aktive Karte wird hervorgehoben</div>
       <div style="display:flex;flex-direction:column;gap:8px">
-        <button onclick="switchTiles('voyager')" style="background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:10px 14px;color:var(--text);text-align:left;cursor:pointer;font-family:var(--font-d)">
-          <div style="font-weight:700;font-size:13px">🧭 Voyager <span style="font-size:10px;color:var(--muted)">(aktuell)</span></div>
-          <div style="font-size:11px;color:var(--muted);margin-top:2px">Standard-Navigation, detailliert</div>
+
+        <button class="karte-btn" data-mode="voyager" onclick="switchTiles('voyager')"
+          style="background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:10px 14px;color:var(--text);text-align:left;cursor:pointer;font-family:var(--font-d);transition:border-color .2s,background .2s">
+          <div style="font-weight:700;font-size:13px">🧭 Voyager</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:2px">Standard-Navigation, Strassennamen sichtbar</div>
         </button>
-        <button onclick="switchTiles('light')" style="background:rgba(255,255,255,.05);border:1px solid rgba(240,200,68,.3);border-radius:10px;padding:10px 14px;color:var(--text);text-align:left;cursor:pointer;font-family:var(--font-d)">
-          <div style="font-weight:700;font-size:13px">☀️ Light <span style="font-size:10px;color:#f0c844">Empfohlen für Analyse</span></div>
+
+        <button class="karte-btn" data-mode="light" onclick="switchTiles('light')"
+          style="background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:10px 14px;color:var(--text);text-align:left;cursor:pointer;font-family:var(--font-d);transition:border-color .2s,background .2s">
+          <div style="font-weight:700;font-size:13px">☀️ Light <span style="font-size:10px;color:#f0c844">Parkdichte-Analyse</span></div>
           <div style="font-size:11px;color:var(--muted);margin-top:2px">Minimalistisch, Zonen besser sichtbar</div>
         </button>
-        <button onclick="switchTiles('dark')" style="background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:10px 14px;color:var(--text);text-align:left;cursor:pointer;font-family:var(--font-d)">
+
+        <button class="karte-btn" data-mode="dark" onclick="switchTiles('dark')"
+          style="background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:10px 14px;color:var(--text);text-align:left;cursor:pointer;font-family:var(--font-d);transition:border-color .2s,background .2s">
           <div style="font-weight:700;font-size:13px">🌙 Dark</div>
           <div style="font-size:11px;color:var(--muted);margin-top:2px">Passt zum App-Design</div>
         </button>
+
+        <button class="karte-btn" data-mode="orthofoto" onclick="switchTiles('orthofoto')"
+          style="background:rgba(255,255,255,.05);border:2px solid rgba(61,220,132,.4);border-radius:10px;padding:10px 14px;color:var(--text);text-align:left;cursor:pointer;font-family:var(--font-d);transition:border-color .2s,background .2s">
+          <div style="font-weight:700;font-size:13px">🛰 Luftbild Wien <span style="font-size:10px;color:#3ddc84">NEU · 0.2m Auflösung</span></div>
+          <div style="font-size:11px;color:var(--muted);margin-top:2px">Echtes Luftbild von Stadt Wien – Autos sichtbar!</div>
+          <div style="font-size:10px;color:#3ddc84;margin-top:4px;font-family:var(--font-m)">Quelle: basemap.at · Jahrlich aktualisiert</div>
+        </button>
+
       </div>
     </div>
   </div>
@@ -450,24 +465,38 @@ const WFS='https://data.wien.gv.at/daten/geo?service=WFS&request=GetFeature&vers
 // KARTEN-TILES (NEU)
 // ════════════════════════════════════════════════
 const TILES={
-  voyager:'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
-  light:  'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
-  dark:   'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+  voyager:  'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
+  light:    'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
+  dark:     'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+  orthofoto:'https://mapsneu.wien.gv.at/basemap/bmaporthofoto30cm/normal/google3857/{z}/{y}/{x}.jpeg',
 };
+
+const TILE_META={
+  voyager:  {badge:null,             toast:'Standardkarte aktiv',           attr:'© OpenStreetMap, © CARTO', sub:'abcd'},
+  light:    {badge:'Analyse-Modus',  toast:'Analyse-Karte aktiv',           attr:'© OpenStreetMap, © CARTO', sub:'abcd'},
+  dark:     {badge:'Dark-Modus',     toast:'Dark-Karte aktiv',              attr:'© OpenStreetMap, © CARTO', sub:'abcd'},
+  orthofoto:{badge:'Luftbild Wien',  toast:'Luftbild geladen (basemap.at)', attr:'© Stadt Wien, basemap.at', sub:''},
+};
+
 let currentTileLayer=null;
 let currentTileMode='voyager';
 
 function switchTiles(mode='voyager'){
   if(currentTileLayer)map.removeLayer(currentTileLayer);
-  currentTileLayer=L.tileLayer(TILES[mode],{
-    attribution:'© OpenStreetMap, © CARTO',subdomains:'abcd',maxZoom:19
-  }).addTo(map);
+  const meta=TILE_META[mode]||TILE_META.voyager;
+  const opts={attribution:meta.attr,maxZoom:19};
+  if(meta.sub)opts.subdomains=meta.sub;
+  currentTileLayer=L.tileLayer(TILES[mode],opts).addTo(map);
   currentTileMode=mode;
   const badge=document.getElementById('mapModeBadge');
-  if(mode==='light'){badge.textContent='🔍 Analyse-Modus';badge.classList.add('visible');}
-  else if(mode==='dark'){badge.textContent='🌙 Dark-Modus';badge.classList.add('visible');}
+  if(meta.badge){badge.textContent=meta.badge;badge.classList.add('visible');}
   else{badge.classList.remove('visible');}
-  showToast(mode==='light'?'☀️ Analyse-Karte aktiv':mode==='dark'?'🌙 Dark-Karte aktiv':'🧭 Standard-Karte aktiv','info');
+  showToast(meta.toast,'info');
+  document.querySelectorAll('.karte-btn').forEach(b=>{
+    const active=b.dataset.mode===mode;
+    b.style.borderColor=active?'#f0c844':'rgba(255,255,255,.1)';
+    b.style.background=active?'rgba(240,200,68,.1)':'rgba(255,255,255,.05)';
+  });
 }
 
 // ════════════════════════════════════════════════
