@@ -660,79 +660,52 @@ async function loadStrassennetz(bezirke){
   if(!Array.isArray(bezirke))bezirke=[bezirke];
   if(strassenLayer){map.removeLayer(strassenLayer);strassenLayer=null;}
   strassenData=[];
-  document.getElementById('strassenVal').textContent='lädt…';
-
-  const filter=bezirke.length===1?`BEZIRK=${bezirke[0]}`:`BEZIRK+IN+(${bezirke.join(',')})`;
-  const url=`https://data.wien.gv.at/daten/geo?service=WFS&request=GetFeature`
-    +`&version=1.1.0&typeName=ogdwien:STRASSENNETZOGD`
-    +`&srsName=EPSG:4326&outputFormat=csv&CQL_FILTER=${filter}`;
-
-  for(let attempt=0;attempt<2;attempt++){
-    try{
-      const csv=await robustFetch(url,35000);
-      if(!csv||csv.trim().length<10)throw new Error('Leer');
-      const lines=csv.trim().split('\n');
-      if(lines.length<2)throw new Error('Zu wenig Zeilen');
-
-      const header=parseCSVLine(lines[0]);
-      const shapeIdx=header.indexOf('SHAPE');
-      const nameIdx=header.indexOf('STRASSENNAME');
-      const bezirkIdx=header.indexOf('BEZIRK');
-      const laengeIdx=header.indexOf('SHAPE_LENGTH');
-      if(shapeIdx<0)throw new Error('Kein SHAPE');
-
-      strassenLayer=L.layerGroup();
-      let count=0;
-
-      for(let i=1;i<lines.length;i++){
-        if(!lines[i].trim())continue;
-        const cols=parseCSVLine(lines[i]);
-        const shape=cols[shapeIdx]||'';
-        const m=shape.match(/LINESTRING\s*\(([^)]+)\)/i);
-        if(!m)continue;
-        const coords=m[1].trim().split(',').map(p=>{
-          const[lng,lat]=p.trim().split(/\s+/).map(Number);return[lat,lng];
-        });
-        if(coords.length<2)continue;
-
-        const name=cols[nameIdx]||'Unbekannte Straße';
-        const bezirk=cols[bezirkIdx]||'';
-        const laenge=parseFloat(cols[laengeIdx])||0;
-
-        // Dichte berechnen: wie viele Punkte der Straße nahe einer Kurzparkzone?
-        let treffer=0;
-        for(const[sLat,sLng] of coords){
-          if(kurzparkPunkte.some(([zLat,zLng])=>distanceM(sLat,sLng,zLat,zLng)<25))treffer++;
-        }
-        const dichte=coords.length>0?treffer/coords.length:0;
-
-        strassenData.push({name,coords,bezirk,laenge,dichte});
-
-        // Farbe je Dichte
-        const col=dichte>0.6?'#ff5f5f':dichte>0.2?'#f0c844':'#4a9eff';
-        const opacity=0.85;
-
-        L.polyline(coords,{color:col,weight:dichte>0.4?3.5:2,opacity})
-          .bindPopup(`<b>🛣 ${name}</b><br>Bezirk: ${bezirk}<br>Länge: ${Math.round(laenge)}m<br>Parkdichte: ${Math.round(dichte*100)}%`)
-          .addTo(strassenLayer);
-        count++;
+  document.getElementById('strassenVal').textContent='laedt...';
+  showToast('Strassennetz wird geladen...','info');
+  if(!highlightLayer){document.getElementById('strassenVal').textContent='Bezirk nicht geladen';return;}
+  const bounds=highlightLayer.getBounds();
+  const s=bounds.getSouth().toFixed(5);
+  const w=bounds.getWest().toFixed(5);
+  const n=bounds.getNorth().toFixed(5);
+  const e=bounds.getEast().toFixed(5);
+  const query=`[out:json][timeout:30];(way["highway"~"^(residential|primary|secondary|tertiary|unclassified|living_street|pedestrian|service)$"](${s},${w},${n},${e}););out geom;`;
+  const url=`https://overpass-api.de/api/interpreter?data=${encodeURIComponent(query)}`;
+  try{
+    const res=await fetchWithTimeout(url,30000);
+    if(!res.ok)throw new Error('HTTP '+res.status);
+    const data=await res.json();
+    if(!data.elements||!data.elements.length)throw new Error('Keine Strassen');
+    strassenLayer=L.layerGroup();
+    const strassenMap={};
+    let count=0;
+    for(const way of data.elements){
+      if(way.type!=='way'||!way.geometry||way.geometry.length<2)continue;
+      const coords=way.geometry.map(p=>[p.lat,p.lon]);
+      const name=(way.tags&&way.tags.name)?way.tags.name:'Unbenannte Strasse';
+      let treffer=0;
+      for(const[sLat,sLng] of coords){
+        if(kurzparkPunkte.some(([zLat,zLng])=>distanceM(sLat,sLng,zLat,zLng)<30))treffer++;
       }
-
-      strassenLayer.addTo(map);
-      document.getElementById('strassenVal').textContent=`${count} Straßen`;
-      // Zeitreihe speichern
-      saveZeitreihe(selectedBezirk,strassenData);
-      // Dashboard aktualisieren wenn offen
-      if(dichteVisible)renderDichtePanel();
-      showToast(`🛣 ${count} Straßen + Dichte berechnet`,'success');
-      return;
-    }catch(e){
-      console.warn('[Straßennetz] Versuch',attempt+1,'fehlgeschlagen:',e.message);
-      if(attempt===0)await new Promise(r=>setTimeout(r,2000));
+      const dichte=coords.length>0?treffer/coords.length:0;
+      if(!strassenMap[name]){strassenMap[name]={name,coords,dichte,cnt:1};}
+      else{const sm=strassenMap[name];sm.dichte=(sm.dichte*sm.cnt+dichte)/(sm.cnt+1);sm.cnt++;}
+      const col=dichte>0.6?'#ff5f5f':dichte>0.2?'#f0c844':'#4a9eff';
+      L.polyline(coords,{color:col,weight:dichte>0.4?3.5:2,opacity:0.85})
+        .bindPopup('<b>'+name+'</b><br>Parkdichte: '+Math.round(dichte*100)+'%<br><small style="color:#888">Rot=hoch / Gelb=mittel / Blau=niedrig</small>')
+        .addTo(strassenLayer);
+      count++;
     }
+    strassenLayer.addTo(map);
+    strassenData=Object.values(strassenMap).sort((a,b)=>b.dichte-a.dichte);
+    document.getElementById('strassenVal').textContent=count+' Segmente (OSM)';
+    saveZeitreihe(selectedBezirk,strassenData);
+    if(dichteVisible)renderDichtePanel();
+    showToast(count+' Strassen geladen','success');
+  }catch(e){
+    console.warn('[Strassennetz] Fehler:',e.message);
+    document.getElementById('strassenVal').textContent='Nicht verfuegbar';
+    showToast('Strassennetz konnte nicht geladen werden','error');
   }
-  document.getElementById('strassenVal').textContent='Nicht verfügbar';
-  showToast('Straßennetz nicht ladbar','error');
 }
 
 // ════════════════════════════════════════════════
