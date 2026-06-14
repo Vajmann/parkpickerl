@@ -1,4 +1,4 @@
-<!-- Version 4.11 PWA – Homescreen-optimiert -->
+<!-- Version 5.0 – Parkdichte + Straßennetz + Dashboard + Zeitreihe -->
 <!DOCTYPE html>
 <html lang="de">
 <head>
@@ -14,13 +14,13 @@
 <meta property="og:description" content="Prüfe ob dein Parkpickerl hier gilt – schnell, gratis, offline-fähig.">
 <meta property="og:type" content="website">
 <meta property="og:locale" content="de_AT">
-<!-- PWA: Manifest + Icon werden per JS inline gesetzt (keine externen Dateien nötig) -->
 <link rel="manifest" id="pwaManifest">
 <link rel="apple-touch-icon" id="appleTouchIcon">
 <title>Parktracker – Wien</title>
-<!-- Schriften: nur System-Fonts, keine externen Anfragen (DSGVO-konform) -->
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.min.css"/>
 <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.min.js"></script>
+<!-- NEU: Chart.js für Zeitreihen-Dashboard -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{
@@ -28,7 +28,8 @@
 --text:#f5f5f5;--muted:#A0A0A0;
 --accent:#007AFF;--accent2:#ff1f35;--accent-glow:rgba(226,0,26,.4);
 --green:#3ddc84;--red:#ff5f5f;--blue:#4a9eff;
---font-d:-apple-system,'SF Pro Display','Helvetica Neue',Arial,sans-serif;--font-m:'SF Mono','Courier New',Courier,monospace;
+--font-d:-apple-system,'SF Pro Display','Helvetica Neue',Arial,sans-serif;
+--font-m:'SF Mono','Courier New',Courier,monospace;
 --safe-top:env(safe-area-inset-top,0px);--safe-bot:env(safe-area-inset-bottom,0px);
 }
 html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--font-d);overflow:hidden;-webkit-tap-highlight-color:transparent}
@@ -56,21 +57,54 @@ header{display:flex;align-items:center;justify-content:space-between;padding:10p
 .result-title{font-size:16px;font-weight:700;letter-spacing:-.3px}
 .result-sub{font-size:11px;color:var(--muted);font-family:var(--font-m);margin-top:2px;line-height:1.4}
 .result-close{background:rgba(255,255,255,.08);border:none;color:var(--muted);width:26px;height:26px;border-radius:50%;font-size:11px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0}
-#gpsFab{position:absolute;bottom:calc(28px + 56px + 10px + var(--safe-bot));right:16px;background:#16181FE6;color:#fff;border:none;width:56px;height:56px;border-radius:50%;cursor:pointer;z-index:400;box-shadow:0 2px 8px rgba(0,0,0,.25),0 1px 3px rgba(0,0,0,.15);transition:transform .2s,box-shadow .2s;display:flex;align-items:center;justify-content:center}
+
+/* ── FABs ── */
+#gpsFab{position:absolute;bottom:calc(28px + 56px + 10px + var(--safe-bot));right:16px;background:#16181FE6;color:#fff;border:none;width:56px;height:56px;border-radius:50%;cursor:pointer;z-index:400;box-shadow:0 2px 8px rgba(0,0,0,.25);transition:transform .2s,box-shadow .2s;display:flex;align-items:center;justify-content:center}
 #gpsFab:active{transform:scale(.92)}
-@media(prefers-color-scheme:dark){#gpsFab{background:#16181FE6;color:#fff;box-shadow:0 2px 12px rgba(0,0,0,.5)}#detailsFab{background:#2C2C2E;color:#fff;box-shadow:0 2px 12px rgba(0,0,0,.5)}}
 #gpsFab.loading{animation:fabpulse 1s infinite}
 @keyframes fabpulse{0%,100%{box-shadow:0 4px 24px var(--accent-glow)}50%{box-shadow:0 4px 48px rgba(226,0,26,.8),0 0 0 8px rgba(226,0,26,.1)}}
-#detailsFab{position:absolute;bottom:calc(28px + var(--safe-bot));right:16px;width:56px;height:56px;background:#fff;color:#1C1C1E;border:none;border-radius:50%;cursor:pointer;z-index:400;box-shadow:0 2px 8px rgba(0,0,0,.25),0 1px 3px rgba(0,0,0,.15);display:flex;align-items:center;justify-content:center;transition:transform .15s}
+#detailsFab{position:absolute;bottom:calc(28px + var(--safe-bot));right:16px;width:56px;height:56px;background:#fff;color:#1C1C1E;border:none;border-radius:50%;cursor:pointer;z-index:400;box-shadow:0 2px 8px rgba(0,0,0,.25);display:flex;align-items:center;justify-content:center;transition:transform .15s}
 #detailsFab:active{transform:scale(.92)}
-#mapOffline{position:absolute;inset:0;background:rgba(14,15,19,.85);display:none;align-items:center;justify-content:center;flex-direction:column;gap:12px;z-index:300;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+
+/* NEU: Dichte-FAB */
+#dichteFab{position:absolute;bottom:calc(28px + 56px + 10px + 56px + 10px + var(--safe-bot));right:16px;width:56px;height:56px;background:#16181FE6;color:#fff;border:none;border-radius:50%;cursor:pointer;z-index:400;box-shadow:0 2px 8px rgba(0,0,0,.25);display:flex;align-items:center;justify-content:center;font-size:22px;transition:transform .15s,background .2s}
+#dichteFab:active{transform:scale(.92)}
+#dichteFab.active{background:rgba(240,200,68,.3);border:1.5px solid #f0c844}
+
+/* NEU: Dichte-Panel */
+#dichtePanel{position:absolute;top:8px;left:16px;right:16px;background:rgba(22,24,31,.95);backdrop-filter:blur(24px);border:1px solid rgba(240,200,68,.3);border-radius:16px;padding:16px;z-index:450;display:none;max-height:70vh;overflow-y:auto}
+#dichtePanel.visible{display:block}
+.dichte-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}
+.dichte-title{font-size:14px;font-weight:700;color:#f0c844}
+.dichte-close{background:rgba(255,255,255,.08);border:none;color:var(--muted);width:26px;height:26px;border-radius:50%;font-size:11px;cursor:pointer}
+.dichte-tabs{display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap}
+.dichte-tab{padding:5px 12px;border-radius:20px;font-size:12px;cursor:pointer;border:1px solid rgba(255,255,255,.1);background:transparent;color:var(--muted);font-family:var(--font-d)}
+.dichte-tab.active{background:rgba(240,200,68,.15);border-color:#f0c844;color:#f0c844}
+.bar-row{display:flex;align-items:center;gap:8px;margin-bottom:7px;font-size:12px}
+.bar-label{width:130px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--text);flex-shrink:0;font-size:11px}
+.bar-wrap{flex:1;background:rgba(255,255,255,.08);border-radius:3px;height:16px;overflow:hidden}
+.bar-fill{height:100%;border-radius:3px;display:flex;align-items:center;padding-left:5px;font-size:10px;color:#fff;font-weight:600;transition:width .5s ease}
+.bar-pct{width:32px;text-align:right;font-size:11px;color:var(--muted);flex-shrink:0}
+.dichte-stat{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px}
+.dichte-stat-item{background:rgba(255,255,255,.05);border-radius:10px;padding:10px;text-align:center}
+.dichte-stat-val{font-size:18px;font-weight:700}
+.dichte-stat-lbl{font-size:10px;color:var(--muted);margin-top:2px}
+.chart-wrap{height:120px;position:relative;margin-top:8px}
+
+#mapOffline{position:absolute;inset:0;background:rgba(14,15,19,.85);display:none;align-items:center;justify-content:center;flex-direction:column;gap:12px;z-index:300;backdrop-filter:blur(8px)}
 #mapOffline.visible{display:flex}
 #mapOffline span{font-size:42px}
 #mapOffline p{font-size:14px;color:var(--muted);font-family:var(--font-m);text-align:center}
+
+/* NEU: Karten-Modus Badge */
+#mapModeBadge{position:absolute;top:8px;left:50%;transform:translateX(-50%);background:rgba(22,24,31,.85);border:1px solid rgba(240,200,68,.4);border-radius:20px;padding:4px 12px;font-size:11px;color:#f0c844;font-family:var(--font-m);z-index:399;pointer-events:none;display:none}
+#mapModeBadge.visible{display:block}
+
 #legend{position:absolute;bottom:0;left:0;background:rgba(22,24,31,.88);backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,.08);border-radius:0 12px 0 0;padding:10px 14px;z-index:400;font-size:11px;font-family:var(--font-m);display:flex;flex-direction:column;gap:6px}
 .legend-row{display:flex;align-items:center;gap:8px;color:var(--text)}
 .legend-dot{width:12px;height:12px;border-radius:50%;flex-shrink:0;border:2px solid rgba(255,255,255,.3)}
 .legend-line{width:20px;height:3px;border-radius:2px;flex-shrink:0}
+
 #onboarding{position:fixed;inset:0;z-index:2000;background:linear-gradient(160deg,#150002 0%,#0f0f0f 60%);display:flex;flex-direction:column;padding:calc(var(--safe-top) + 40px) 24px calc(var(--safe-bot) + 24px);transition:opacity .4s,transform .4s}
 #onboarding.hidden{opacity:0;transform:scale(.96);pointer-events:none}
 .ob-logo{width:80px;height:80px;background:#f0c844;border-radius:22px;display:flex;align-items:center;justify-content:center;margin-bottom:28px;box-shadow:0 12px 40px rgba(240,200,68,.5),0 4px 16px rgba(0,0,0,.4)}
@@ -88,6 +122,7 @@ header{display:flex;align-items:center;justify-content:space-between;padding:10p
 .ob-continue{margin-top:16px;background:#f0c844;color:#1C1C1E;border:none;border-radius:14px;padding:16px;font-family:var(--font-d);font-weight:900;font-size:17px;cursor:pointer;width:100%;flex-shrink:0;opacity:.35;pointer-events:none;transition:opacity .2s,transform .15s;box-shadow:0 4px 20px rgba(240,200,68,.5);letter-spacing:-.3px}
 .ob-continue.active{opacity:1;pointer-events:auto}
 .ob-continue.active:active{transform:scale(.97)}
+
 .sheet-overlay{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:900;opacity:0;pointer-events:none;transition:opacity .3s}
 .sheet-overlay.visible{opacity:1;pointer-events:auto}
 .bottom-sheet{position:fixed;bottom:0;left:0;right:0;background:var(--surface);border-top:1px solid var(--border);border-radius:24px 24px 0 0;padding:0 20px calc(20px + var(--safe-bot));transform:translateY(100%);transition:transform .35s cubic-bezier(.4,0,.2,1);z-index:1000;max-height:82vh;overflow-y:auto}
@@ -100,11 +135,13 @@ header{display:flex;align-items:center;justify-content:space-between;padding:10p
 .info-row .val{font-weight:600;font-size:12px;font-family:var(--font-m);color:var(--blue)}
 .sheet-btn{border:none;border-radius:10px;padding:11px 16px;font-family:var(--font-d);font-weight:700;font-size:13px;cursor:pointer}
 .sheet-btn:active{opacity:.7}
-.toast{position:fixed;top:calc(160px + var(--safe-top));left:50%;transform:translateX(-50%) translateY(-10px);background:rgba(22,24,31,.95);border:1px solid rgba(175,82,222,.4);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border-radius:50px;padding:10px 20px;font-size:13px;font-family:var(--font-m);color:#fff;opacity:0;transition:transform .3s,opacity .3s;z-index:3000;white-space:nowrap;max-width:90vw;overflow:hidden;text-overflow:ellipsis;pointer-events:none}
+
+.toast{position:fixed;top:calc(160px + var(--safe-top));left:50%;transform:translateX(-50%) translateY(-10px);background:rgba(22,24,31,.95);border:1px solid rgba(175,82,222,.4);backdrop-filter:blur(20px);border-radius:50px;padding:10px 20px;font-size:13px;font-family:var(--font-m);color:#fff;opacity:0;transition:transform .3s,opacity .3s;z-index:3000;white-space:nowrap;max-width:90vw;overflow:hidden;text-overflow:ellipsis;pointer-events:none}
 .toast.show{transform:translateX(-50%) translateY(0);opacity:1}
-.toast.success{border-color:rgba(255,255,255,.2);color:#fff}
-.toast.error{border-color:rgba(255,95,95,.4);color:#fff}
-.toast.info{border-color:rgba(255,255,255,.2);color:#fff}
+.toast.success{border-color:rgba(255,255,255,.2)}
+.toast.error{border-color:rgba(255,95,95,.4)}
+.toast.info{border-color:rgba(255,255,255,.2)}
+
 #offlineBanner{display:none;background:rgba(255,95,95,.1);border-bottom:1px solid rgba(255,95,95,.3);padding:8px 16px;text-align:center;font-size:12px;color:var(--red);font-family:var(--font-m);flex-shrink:0}
 #offlineBanner.visible{display:block}
 #installBanner{display:none;background:rgba(226,0,26,.06);border-bottom:1px solid rgba(226,0,26,.2);padding:10px 16px;align-items:center;gap:10px;flex-shrink:0}
@@ -113,26 +150,35 @@ header{display:flex;align-items:center;justify-content:space-between;padding:10p
 #installBanner strong{color:var(--accent)}
 .btn-install{background:linear-gradient(135deg,#ff1f35,#007AFF);color:#fff;border:none;border-radius:8px;padding:7px 14px;font-weight:700;font-size:12px;cursor:pointer;font-family:var(--font-d)}
 .btn-dismiss{background:none;border:none;color:var(--muted);font-size:18px;cursor:pointer}
-.leaflet-bottom.leaflet-left{bottom:90px;}
-/* iOS Install Modal */
+.leaflet-bottom.leaflet-left{bottom:90px}
+
 #iosInstallModal{position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.72);display:flex;align-items:flex-end;justify-content:center}
 .ios-modal-box{background:#2C2C2E;border-radius:20px 20px 0 0;padding:24px 20px calc(28px + env(safe-area-inset-bottom,16px));width:100%;max-width:480px;color:#fff;font-family:var(--font-d)}
 .ios-step{display:flex;align-items:center;gap:12px;background:#3A3A3C;border-radius:12px;padding:12px 14px;font-size:14px;line-height:1.4;margin-bottom:10px}
-.ios-step-num{font-size:22px;font-weight:900;width:32px;text-align:center;flex-shrink:0;color:#f0c844;font-family:var(--font-d)}
+.ios-step-num{font-size:22px;font-weight:900;width:32px;text-align:center;flex-shrink:0;color:#f0c844}
+
 @media(prefers-color-scheme:light){
 :root{--bg:#F2F2F7;--surface:#fff;--surface2:#f0f0f2;--border:#e0e0e5;--text:#1a1a2e;--muted:#444466}
-/* Header bleibt dunkel – nur Bezirk-Button besser lesbar */
 #bezirkBtn{color:#ffffff;background:rgba(226,0,26,.18);border:1.5px solid rgba(226,0,26,.6)}
 #bezirkBtn.selected{color:#ffffff;background:rgba(226,0,26,.25);border-color:rgba(226,0,26,.8)}
 #bezirkBtn span#bezirkLabel{color:#F5F5F5;font-weight:700}
 .bez-dot{background:#ccc}
 #bezirkBtn.selected .bez-dot{background:#fff;box-shadow:0 0 6px rgba(255,255,255,.8)}
-/* Rest Light Mode */
 #resultCard{background:rgba(255,255,255,.92)}
 #onboarding{background:#f5f5f7}
 #legend{background:rgba(255,255,255,.92);border-color:rgba(0,0,0,.1)}
-#gpsFab{background:#16181FE6;color:#fff;box-shadow:0 2px 8px rgba(0,0,0,.2)}
-#detailsFab{background:#fff;color:#1C1C1E;box-shadow:0 2px 8px rgba(0,0,0,.2)}
+#gpsFab{background:#16181FE6;color:#fff}
+#detailsFab{background:#fff;color:#1C1C1E}
+#dichteFab{background:#16181FE6;color:#fff}
+#dichtePanel{background:rgba(255,255,255,.97);border-color:rgba(240,200,68,.5)}
+.dichte-title{color:#996600}
+.bar-label{color:#1a1a2e}
+.dichte-stat-item{background:rgba(0,0,0,.05)}
+}
+@media(prefers-color-scheme:dark){
+#gpsFab{background:#16181FE6;color:#fff}
+#detailsFab{background:#2C2C2E;color:#fff}
+#dichteFab{background:#16181FE6;color:#fff}
 }
 </style>
 </head>
@@ -176,6 +222,10 @@ header{display:flex;align-items:center;justify-content:space-between;padding:10p
   <div id="map"></div>
   <div id="mapOffline"><span>🗺️</span><p>Karte nicht verfügbar<br>Kein Internet</p></div>
 
+  <!-- Karten-Modus Anzeige -->
+  <div id="mapModeBadge">🔍 Analyse-Modus</div>
+
+  <!-- Ergebnis-Karte (bestehend) -->
   <div id="resultCard">
     <span class="result-icon" id="resultIcon">🅿️</span>
     <div class="result-body">
@@ -185,18 +235,93 @@ header{display:flex;align-items:center;justify-content:space-between;padding:10p
     <button class="result-close" onclick="hideResult()">✕</button>
   </div>
 
+  <!-- NEU: Parkdichte-Panel -->
+  <div id="dichtePanel">
+    <div class="dichte-header">
+      <span class="dichte-title">📊 Parkdichte-Analyse</span>
+      <button class="dichte-close" onclick="toggleDichte()">✕</button>
+    </div>
+
+    <!-- Statistik-Übersicht -->
+    <div class="dichte-stat">
+      <div class="dichte-stat-item">
+        <div class="dichte-stat-val" id="statDichte" style="color:var(--red)">–</div>
+        <div class="dichte-stat-lbl">Ø Dichte</div>
+      </div>
+      <div class="dichte-stat-item">
+        <div class="dichte-stat-val" id="statStrassen">–</div>
+        <div class="dichte-stat-lbl">Straßen</div>
+      </div>
+      <div class="dichte-stat-item">
+        <div class="dichte-stat-val" id="statMessungen">–</div>
+        <div class="dichte-stat-lbl">Messungen</div>
+      </div>
+    </div>
+
+    <!-- Tabs -->
+    <div class="dichte-tabs">
+      <button class="dichte-tab active" onclick="switchDichteTab('strassen',this)">Straßen</button>
+      <button class="dichte-tab" onclick="switchDichteTab('zeitreihe',this)">Zeitverlauf</button>
+      <button class="dichte-tab" onclick="switchDichteTab('karte',this)">Karte wählen</button>
+    </div>
+
+    <!-- Straßen-Liste -->
+    <div id="tabStrassen">
+      <div id="dichteList">
+        <div style="color:var(--muted);font-size:12px;text-align:center;padding:20px">
+          Straßennetz wird geladen…
+        </div>
+      </div>
+    </div>
+
+    <!-- Zeitreihen-Chart -->
+    <div id="tabZeitreihe" style="display:none">
+      <div class="chart-wrap">
+        <canvas id="zeitChart" role="img" aria-label="Parkdichte Zeitverlauf"></canvas>
+      </div>
+      <div style="font-size:10px;color:var(--muted);text-align:center;margin-top:6px">
+        Letzte 10 Messungen (GPS-Checks)
+      </div>
+    </div>
+
+    <!-- Kartenauswahl -->
+    <div id="tabKarte" style="display:none">
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <button onclick="switchTiles('voyager')" style="background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:10px 14px;color:var(--text);text-align:left;cursor:pointer;font-family:var(--font-d)">
+          <div style="font-weight:700;font-size:13px">🧭 Voyager <span style="font-size:10px;color:var(--muted)">(aktuell)</span></div>
+          <div style="font-size:11px;color:var(--muted);margin-top:2px">Standard-Navigation, detailliert</div>
+        </button>
+        <button onclick="switchTiles('light')" style="background:rgba(255,255,255,.05);border:1px solid rgba(240,200,68,.3);border-radius:10px;padding:10px 14px;color:var(--text);text-align:left;cursor:pointer;font-family:var(--font-d)">
+          <div style="font-weight:700;font-size:13px">☀️ Light <span style="font-size:10px;color:#f0c844">Empfohlen für Analyse</span></div>
+          <div style="font-size:11px;color:var(--muted);margin-top:2px">Minimalistisch, Zonen besser sichtbar</div>
+        </button>
+        <button onclick="switchTiles('dark')" style="background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:10px 14px;color:var(--text);text-align:left;cursor:pointer;font-family:var(--font-d)">
+          <div style="font-weight:700;font-size:13px">🌙 Dark</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:2px">Passt zum App-Design</div>
+        </button>
+      </div>
+    </div>
+  </div>
+
   <div id="legend">
     <div class="legend-row"><span class="legend-line" style="background:#ff5f5f"></span>Kurzparkzone</div>
     <div class="legend-row"><span class="legend-line" style="background:#007AFF"></span>Ladezone</div>
     <div class="legend-row"><span class="legend-line" style="background:#AF52DE"></span>Anrainerzone</div>
     <div class="legend-row"><span class="legend-line" style="background:#f0c844"></span>Dein Bezirk</div>
+    <div class="legend-row"><span class="legend-line" style="background:#888;opacity:.6"></span>Straßennetz</div>
   </div>
 
+  <!-- GPS FAB -->
   <button id="gpsFab" onclick="getLocation()">
     <svg id="fabIcon" viewBox="0 0 24 24" width="24" height="24" fill="currentColor">
       <path d="M12 2L4.5 20.29l.71.71L12 18l6.79 3 .71-.71z"/>
     </svg>
   </button>
+
+  <!-- NEU: Dichte-FAB -->
+  <button id="dichteFab" onclick="toggleDichte()" title="Parkdichte-Analyse">📊</button>
+
+  <!-- Details FAB -->
   <button id="detailsFab" onclick="openSheet('detailsSheet')">
     <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor">
       <path d="M19.14 12.94c.04-.3.06-.61.06-.94s-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.07.62-.07.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/>
@@ -206,12 +331,14 @@ header{display:flex;align-items:center;justify-content:space-between;padding:10p
 
 <div class="sheet-overlay" id="sheetOverlay" onclick="closeSheet()"></div>
 
+<!-- Bezirk Sheet -->
 <div class="bottom-sheet" id="bezirkSheet">
   <div class="sheet-handle"></div>
   <div class="sheet-title">Bezirk wechseln</div>
   <div class="bezirk-grid" id="bezirkGridSheet" style="max-height:60vh;overflow-y:auto;padding-bottom:16px"></div>
 </div>
 
+<!-- Details Sheet -->
 <div class="bottom-sheet" id="detailsSheet">
   <div class="sheet-handle"></div>
   <div class="sheet-title">Mein Pickerl</div>
@@ -222,6 +349,7 @@ header{display:flex;align-items:center;justify-content:space-between;padding:10p
   <div class="info-row"><span class="key">API-Status</span><span class="val" id="apiStatusVal">—</span></div>
   <div class="info-row"><span class="key">Ladezonen geladen</span><span class="val" id="ladezonenVal">—</span></div>
   <div class="info-row"><span class="key">Anrainerzonen</span><span class="val" id="anrainerVal">—</span></div>
+  <div class="info-row"><span class="key">Straßen geladen</span><span class="val" id="strassenVal">—</span></div>
   <div class="info-row"><span class="key">Mein Bezirk</span><span class="val" id="savedBezirkVal">—</span></div>
   <div class="info-row"><span class="key">Benachrichtigungen</span><span class="val" id="notifStatusVal">—</span></div>
   <div class="info-row" style="gap:10px;flex-wrap:wrap;padding-top:4px">
@@ -229,24 +357,23 @@ header{display:flex;align-items:center;justify-content:space-between;padding:10p
     <button class="sheet-btn" onclick="clearSavedPos()" style="background:var(--surface2);color:var(--red);border:1px solid var(--border);flex:1">🗑 Cache löschen</button>
   </div>
   <div style="margin-top:16px;padding:14px;background:rgba(0,122,255,.06);border:1px solid rgba(0,122,255,.2);border-radius:12px">
-    <div style="font-size:12px;font-weight:700;color:var(--accent);margin-bottom:8px;letter-spacing:.3px">🗂 Datenquelle</div>
+    <div style="font-size:12px;font-weight:700;color:var(--accent);margin-bottom:8px">🗂 Datenquelle</div>
     <div style="font-size:11px;color:var(--muted);font-family:var(--font-m);line-height:1.7">
-      Diese Anwendung verwendet offene Daten der Stadt Wien (Open Government Data – OGD Wien).<br><br>
-      Die bereitgestellten Informationen, insbesondere zu Parkzonen, Verkehrsregelungen und geografischen Daten, basieren auf öffentlich zugänglichen Datensätzen der Stadt Wien.<br><br>
-      Weitere Informationen und Zugriff auf die Originaldaten:
+      OGD Wien – Parkzonen, Straßennetz, Ladezonen, Anrainerzonen.<br>
+      Zeitreihen lokal gespeichert (localStorage).
     </div>
-    <a href="https://data.wien.gv.at" target="_blank"
-      style="display:inline-block;margin-top:8px;font-size:11px;color:var(--accent);font-family:var(--font-m);text-decoration:none;border-bottom:1px solid rgba(0,122,255,.3);padding-bottom:1px">
-      🔗 data.wien.gv.at
-    </a>
+    <a href="https://data.wien.gv.at" target="_blank" style="display:inline-block;margin-top:8px;font-size:11px;color:var(--accent);font-family:var(--font-m);text-decoration:none;border-bottom:1px solid rgba(0,122,255,.3);padding-bottom:1px">🔗 data.wien.gv.at</a>
   </div>
-  <div style="padding:12px 0 4px;font-size:10px;color:var(--muted);font-family:var(--font-m)">Version 4.11 PWA – OGD Wien · Homescreen-optimiert</div>
+  <div style="padding:12px 0 4px;font-size:10px;color:var(--muted);font-family:var(--font-m)">Version 5.0 – Parkdichte + Straßennetz + Zeitreihe</div>
 </div>
 
 <div class="toast" id="toast"></div>
 </div>
 
 <script>
+// ════════════════════════════════════════════════
+// KONSTANTEN & STORAGE
+// ════════════════════════════════════════════════
 const STORAGE={BEZIRK:'pp_bezirk',POS:'pp_lastpos',ONBOARDED:'pp_onboarded'};
 
 const GRID_ENTRIES=[
@@ -280,82 +407,87 @@ function getZoneBezirke(key){
   return e?e.nr:[parseInt(key)];
 }
 
-// ── Eigener Cloudflare Worker Proxy ──
-// WICHTIG: Ersetze die URL unten mit deiner Worker-URL nach dem Deployment!
-// Anleitung: siehe cloudflare-worker.js
-const CF_WORKER = 'https://parktracker-proxy.szerhij-vajnahij.workers.dev';
+const ZONE_META={
+  '45':{label:'4. & 5. Bezirk',short:'4. & 5. Bezirk',info:'Wieden + Margareten'},
+  '1415':{label:'14. & 15. Bezirk',short:'14. & 15. Bezirk',info:'Penzing + Rudolfsheim-Fünfhaus'}
+};
 
-async function robustFetch(ogdUrl, timeoutMs=18000, gpsData=false){
-  // DSGVO: Bei GPS-Daten (gpsData=true) NUR eigener Cloudflare Worker erlaubt!
-  // Kein Drittanbieter bekommt Standortdaten zu sehen.
+// Cloudflare Worker Proxy
+const CF_WORKER='https://parktracker-proxy.szerhij-vajnahij.workers.dev';
 
-  // 1. Eigener Cloudflare Worker (immer erste Wahl)
-  const workerUrl = `${CF_WORKER}?url=${encodeURIComponent(ogdUrl)}`;
+// ════════════════════════════════════════════════
+// NETZWERK
+// ════════════════════════════════════════════════
+// Timeout-Hilfsfunktion ohne AbortSignal (kein Cloning-Problem mit SW)
+function fetchWithTimeout(url,ms){
+  const timeout=new Promise((_,rej)=>setTimeout(()=>rej(new Error('Timeout')),ms));
+  return Promise.race([fetch(url),timeout]);
+}
+
+async function robustFetch(ogdUrl,timeoutMs=18000,gpsData=false){
+  const workerUrl=`${CF_WORKER}?url=${encodeURIComponent(ogdUrl)}`;
   try{
-    const ctrl=new AbortController();
-    const t=setTimeout(()=>ctrl.abort(),timeoutMs);
-    const res=await fetch(workerUrl,{signal:ctrl.signal});
-    clearTimeout(t);
-    if(res.ok){
-      const txt=await res.text();
-      if(txt&&txt.trim().length>10&&!txt.trim().startsWith('<'))return txt;
-    }
+    const res=await fetchWithTimeout(workerUrl,timeoutMs);
+    if(res.ok){const txt=await res.text();if(txt&&txt.trim().length>10&&!txt.trim().startsWith('<'))return txt;}
   }catch(e){console.warn('[Worker] Fehler:',e.message);}
-
-  // 2. Fallback NUR für nicht-GPS Anfragen (Bezirksgrenzen, Ladezonen etc.)
-  if(gpsData){
-    // GPS-Daten → kein Fallback auf Drittanbieter → DSGVO-konform
-    throw new Error('Worker nicht erreichbar – GPS-Daten werden nicht an Drittanbieter gesendet');
-  }
-  const fallbacks=[
-    ogdUrl,
-    `https://corsproxy.io/?url=${encodeURIComponent(ogdUrl)}`,
-    `https://api.allorigins.win/raw?url=${encodeURIComponent(ogdUrl)}`,
-  ];
+  if(gpsData)throw new Error('Worker nicht erreichbar – GPS-Daten DSGVO-geschützt');
+  const fallbacks=[ogdUrl,`https://corsproxy.io/?url=${encodeURIComponent(ogdUrl)}`,`https://api.allorigins.win/raw?url=${encodeURIComponent(ogdUrl)}`];
   for(const url of fallbacks){
     try{
-      const ctrl=new AbortController();
-      const t=setTimeout(()=>ctrl.abort(),12000);
-      const res=await fetch(url,{signal:ctrl.signal});
-      clearTimeout(t);
+      const res=await fetchWithTimeout(url,12000);
       if(!res.ok)continue;
       const txt=await res.text();
-      if(!txt||txt.trim().length<10)continue;
-      if(txt.trim().startsWith('<'))continue;
+      if(!txt||txt.trim().length<10||txt.trim().startsWith('<'))continue;
       return txt;
     }catch(e){}
   }
   throw new Error('Alle Verbindungen fehlgeschlagen');
 }
+
 const WFS='https://data.wien.gv.at/daten/geo?service=WFS&request=GetFeature&version=1.1.0&outputFormat=application/json&srsName=EPSG:4326';
 
-const ZONE_META={
-  '45':{label:'4. & 5. Bezirk',short:'4. & 5. Bezirk',info:'Wieden + Margareten – gemeinsame Pickerlzone'},
-  '1415':{label:'14. & 15. Bezirk',short:'14. & 15. Bezirk',info:'Penzing + Rudolfsheim-Fünfhaus – gemeinsame Pickerlzone'}
+// ════════════════════════════════════════════════
+// KARTEN-TILES (NEU)
+// ════════════════════════════════════════════════
+const TILES={
+  voyager:'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
+  light:  'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
+  dark:   'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
 };
+let currentTileLayer=null;
+let currentTileMode='voyager';
 
+function switchTiles(mode='voyager'){
+  if(currentTileLayer)map.removeLayer(currentTileLayer);
+  currentTileLayer=L.tileLayer(TILES[mode],{
+    attribution:'© OpenStreetMap, © CARTO',subdomains:'abcd',maxZoom:19
+  }).addTo(map);
+  currentTileMode=mode;
+  const badge=document.getElementById('mapModeBadge');
+  if(mode==='light'){badge.textContent='🔍 Analyse-Modus';badge.classList.add('visible');}
+  else if(mode==='dark'){badge.textContent='🌙 Dark-Modus';badge.classList.add('visible');}
+  else{badge.classList.remove('visible');}
+  showToast(mode==='light'?'☀️ Analyse-Karte aktiv':mode==='dark'?'🌙 Dark-Karte aktiv':'🧭 Standard-Karte aktiv','info');
+}
+
+// ════════════════════════════════════════════════
+// ZUSTANDS-VARIABLEN
+// ════════════════════════════════════════════════
 let map,userMarker,highlightLayer,zoneLayer,ladezonenLayer,anrainerLayer;
+let strassenLayer=null;           // NEU
 let selectedBezirk=null,activeSheet=null,swipeStartY=0;
 let watchId=null,lastLat=null,lastLng=null,followMode=true;
+let parkTimer=null,lastZoneResult=null,parkedLat=null,parkedLng=null;
+let lastHighSpeed=0,lastSpeed=0,carModeConfirmed=false;
+let ladezonenData=[],anrainerData=[];
+let strassenData=[];              // NEU: [{name, coords, bezirk, laenge, dichte}]
+let kurzparkPunkte=[];            // NEU: Punkte aller Kurzparkzonen
+let zeitChart=null;               // NEU: Chart.js Instanz
+let dichteVisible=false;          // NEU: Panel offen?
 
-// ── Park-Benachrichtigung ──
-let parkTimer=null;           // Timer für Stillstand-Erkennung
-let lastZoneResult=null;      // Letztes Zonen-Ergebnis
-let parkedLat=null,parkedLng=null; // Position wo Auto gestoppt hat
-let lastHighSpeed=0;          // Zeitstempel der letzten Geschwindigkeit > 15 km/h
-let lastSpeed=0;              // Letzte bekannte Geschwindigkeit in km/h
-let carModeConfirmed=false;   // true wenn mindestens einmal > 25 km/h → Auto bestätigt
-// Logik:
-// Nur Benachrichtigung wenn carModeConfirmed=true (mind. einmal > 25 km/h)
-// → Zu Fuß/Fahrrad langsam → nie Benachrichtigungen
-// War in letzten 60 Sek schneller als 15 km/h → Ampel-Modus → Timer: 60 Sek
-// War langsam (Parkmanöver/Rückwärts) → Timer: 25 Sek
-
-// Gespeicherte Zonen-Daten für Proximity-Check
-let ladezonenData=[];   // [{coords, zeitraum, ausnahme, adresse}]
-let anrainerData=[];    // [{coords, adresse}]
-
-// ── Onboarding ──
+// ════════════════════════════════════════════════
+// ONBOARDING
+// ════════════════════════════════════════════════
 function buildGrid(id,onSelect){
   const g=document.getElementById(id);g.innerHTML='';
   GRID_ENTRIES.forEach(entry=>{
@@ -365,7 +497,7 @@ function buildGrid(id,onSelect){
     if(entry.combined){
       b.style.cssText='grid-column:span 2;background:rgba(240,200,68,.06);border-color:rgba(240,200,68,.35)';
       b.innerHTML=`<span class="bez-nr" style="font-size:16px">${entry.label}</span>${entry.name.replace('\n','<br>')}`;
-    } else {
+    }else{
       b.innerHTML=`<span class="bez-nr">${entry.label}</span>${entry.name}`;
     }
     b.onclick=()=>onSelect(String(entry.key),b,g);
@@ -404,7 +536,9 @@ function finishOnboarding(){
   showToast('Gespeichert! Jetzt GPS-Button tippen 📍','success');
 }
 
-// ── Bezirk ──
+// ════════════════════════════════════════════════
+// BEZIRK
+// ════════════════════════════════════════════════
 function selectBezirk(key,hl=true){
   key=String(key);
   selectedBezirk=key;
@@ -412,33 +546,29 @@ function selectBezirk(key,hl=true){
   const entry=GRID_ENTRIES.find(e=>String(e.key)===key);
   const meta=ZONE_META[key];
   let headerLabel,detailLabel;
-  if(meta){
-    headerLabel=meta.short;detailLabel=meta.label;
-  } else if(entry){
+  if(meta){headerLabel=meta.short;detailLabel=meta.label;}
+  else if(entry){
     headerLabel=entry.nr.length>1?entry.nr.map(n=>`${n}.`).join(' & ')+' Bezirk':`${entry.label}. ${entry.name}`;
     detailLabel=entry.nr.length>1?entry.nr.map(n=>`${n}. Bezirk`).join(' + '):`${entry.label}. Bezirk`;
-  } else {
-    headerLabel=`${key}. Bezirk`;detailLabel=`${key}. Bezirk`;
-  }
+  }else{headerLabel=`${key}. Bezirk`;detailLabel=`${key}. Bezirk`;}
   document.getElementById('bezirkLabel').textContent=headerLabel;
   document.getElementById('bezirkBtn').classList.add('selected');
   document.getElementById('savedBezirkVal').textContent=detailLabel;
-  document.querySelectorAll('#bezirkGridSheet .bez-option').forEach(b=>
-    b.classList.toggle('selected',b.dataset.nr===key)
-  );
+  document.querySelectorAll('#bezirkGridSheet .bez-option').forEach(b=>b.classList.toggle('selected',b.dataset.nr===key));
   if(hl)highlightBezirk(key);
   if(watchId!==null&&lastLat!==null){checkPoint(lastLat,lastLng);}
   else{setTimeout(startTracking,500);}
 }
 
-// ── Karte ──
+// ════════════════════════════════════════════════
+// KARTE INITIALISIEREN
+// ════════════════════════════════════════════════
 let BEZIRKE_GEO=null;
 
 function initMap(){
   map=L.map('map',{center:[48.2082,16.3738],zoom:12,zoomControl:false});
-  L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',{
-    attribution:'© OpenStreetMap, © CARTO',subdomains:'abcd',maxZoom:19
-  }).addTo(map);
+  // Tiles über switchTiles setzen
+  switchTiles('voyager');
   L.control.zoom({position:'bottomleft'}).addTo(map);
   map.on('tileerror',()=>{if(!navigator.onLine)document.getElementById('mapOffline').classList.add('visible');});
   loadRealBezirksgrenzen();
@@ -472,11 +602,10 @@ function highlightBezirk(key){
   if(zoneLayer){map.removeLayer(zoneLayer);zoneLayer=null;}
   if(ladezonenLayer){map.removeLayer(ladezonenLayer);ladezonenLayer=null;}ladezonenData=[];
   if(anrainerLayer){map.removeLayer(anrainerLayer);anrainerLayer=null;}anrainerData=[];
+  if(strassenLayer){map.removeLayer(strassenLayer);strassenLayer=null;}strassenData=[];kurzparkPunkte=[];
   if(!BEZIRKE_GEO){showToast('Bezirksgrenzen laden…','info');return;}
   const zoneBezirke=getZoneBezirke(key);
-  const features=zoneBezirke
-    .map(b=>BEZIRKE_GEO.features.find(f=>parseInt(f.properties.BEZNR)===b))
-    .filter(Boolean);
+  const features=zoneBezirke.map(b=>BEZIRKE_GEO.features.find(f=>parseInt(f.properties.BEZNR)===b)).filter(Boolean);
   if(!features.length){showToast(`Bezirk ${key} nicht gefunden ⚠️`,'error');return;}
   highlightLayer=L.geoJSON(
     {type:'FeatureCollection',features},
@@ -486,6 +615,9 @@ function highlightBezirk(key){
   loadZones(key,features);
 }
 
+// ════════════════════════════════════════════════
+// ZONEN LADEN
+// ════════════════════════════════════════════════
 async function loadZones(key,bezFeatures){
   key=String(key);
   const zoneBezirke=getZoneBezirke(key);
@@ -497,19 +629,246 @@ async function loadZones(key,bezFeatures){
     const d=JSON.parse(txt);
     if(d&&d.features){
       zoneLayer=L.geoJSON(d,{style:{color:'#ff5f5f',weight:2,fillColor:'#ff5f5f',fillOpacity:.25,opacity:.9}}).addTo(map);
+      extractKurzparkPunkte(d); // NEU
     }
   }catch(e){console.warn('[Kurzparkzonen] Fehler:',e.message);}
   await loadLadezonen(zoneBezirke);
   await loadAnrainerZonen(zoneBezirke);
+  await loadStrassennetz(zoneBezirke); // NEU
 }
 
+// ════════════════════════════════════════════════
+// NEU: KURZPARKZONEN-PUNKTE EXTRAHIEREN
+// ════════════════════════════════════════════════
+function extractKurzparkPunkte(geoJsonData){
+  kurzparkPunkte=[];
+  if(!geoJsonData?.features)return;
+  for(const f of geoJsonData.features){
+    const g=f.geometry;if(!g)continue;
+    const rings=g.type==='Polygon'?g.coordinates:g.type==='MultiPolygon'?g.coordinates.flat():[];
+    for(const ring of rings){
+      for(const [lng,lat] of ring){kurzparkPunkte.push([lat,lng]);}
+    }
+  }
+  console.log('[Kurzpark] Punkte extrahiert:',kurzparkPunkte.length);
+}
+
+// ════════════════════════════════════════════════
+// NEU: STRASSENNETZ LADEN
+// ════════════════════════════════════════════════
+async function loadStrassennetz(bezirke){
+  if(!Array.isArray(bezirke))bezirke=[bezirke];
+  if(strassenLayer){map.removeLayer(strassenLayer);strassenLayer=null;}
+  strassenData=[];
+  document.getElementById('strassenVal').textContent='lädt…';
+
+  const filter=bezirke.length===1?`BEZIRK=${bezirke[0]}`:`BEZIRK+IN+(${bezirke.join(',')})`;
+  const url=`https://data.wien.gv.at/daten/geo?service=WFS&request=GetFeature`
+    +`&version=1.1.0&typeName=ogdwien:STRASSENNETZOGD`
+    +`&srsName=EPSG:4326&outputFormat=csv&CQL_FILTER=${filter}`;
+
+  for(let attempt=0;attempt<2;attempt++){
+    try{
+      const csv=await robustFetch(url,35000);
+      if(!csv||csv.trim().length<10)throw new Error('Leer');
+      const lines=csv.trim().split('\n');
+      if(lines.length<2)throw new Error('Zu wenig Zeilen');
+
+      const header=parseCSVLine(lines[0]);
+      const shapeIdx=header.indexOf('SHAPE');
+      const nameIdx=header.indexOf('STRASSENNAME');
+      const bezirkIdx=header.indexOf('BEZIRK');
+      const laengeIdx=header.indexOf('SHAPE_LENGTH');
+      if(shapeIdx<0)throw new Error('Kein SHAPE');
+
+      strassenLayer=L.layerGroup();
+      let count=0;
+
+      for(let i=1;i<lines.length;i++){
+        if(!lines[i].trim())continue;
+        const cols=parseCSVLine(lines[i]);
+        const shape=cols[shapeIdx]||'';
+        const m=shape.match(/LINESTRING\s*\(([^)]+)\)/i);
+        if(!m)continue;
+        const coords=m[1].trim().split(',').map(p=>{
+          const[lng,lat]=p.trim().split(/\s+/).map(Number);return[lat,lng];
+        });
+        if(coords.length<2)continue;
+
+        const name=cols[nameIdx]||'Unbekannte Straße';
+        const bezirk=cols[bezirkIdx]||'';
+        const laenge=parseFloat(cols[laengeIdx])||0;
+
+        // Dichte berechnen: wie viele Punkte der Straße nahe einer Kurzparkzone?
+        let treffer=0;
+        for(const[sLat,sLng] of coords){
+          if(kurzparkPunkte.some(([zLat,zLng])=>distanceM(sLat,sLng,zLat,zLng)<25))treffer++;
+        }
+        const dichte=coords.length>0?treffer/coords.length:0;
+
+        strassenData.push({name,coords,bezirk,laenge,dichte});
+
+        // Farbe je Dichte
+        const col=dichte>0.7?'#ff5f5f':dichte>0.3?'#f0c844':'#888';
+        const opacity=dichte>0.1?0.7:0.3;
+
+        L.polyline(coords,{color:col,weight:dichte>0.3?2.5:1.5,opacity})
+          .bindPopup(`<b>🛣 ${name}</b><br>Bezirk: ${bezirk}<br>Länge: ${Math.round(laenge)}m<br>Parkdichte: ${Math.round(dichte*100)}%`)
+          .addTo(strassenLayer);
+        count++;
+      }
+
+      strassenLayer.addTo(map);
+      document.getElementById('strassenVal').textContent=`${count} Straßen`;
+      // Zeitreihe speichern
+      saveZeitreihe(selectedBezirk,strassenData);
+      // Dashboard aktualisieren wenn offen
+      if(dichteVisible)renderDichtePanel();
+      showToast(`🛣 ${count} Straßen + Dichte berechnet`,'success');
+      return;
+    }catch(e){
+      console.warn('[Straßennetz] Versuch',attempt+1,'fehlgeschlagen:',e.message);
+      if(attempt===0)await new Promise(r=>setTimeout(r,2000));
+    }
+  }
+  document.getElementById('strassenVal').textContent='Nicht verfügbar';
+  showToast('Straßennetz nicht ladbar','error');
+}
+
+// ════════════════════════════════════════════════
+// NEU: ZEITREIHE SPEICHERN
+// ════════════════════════════════════════════════
+function saveZeitreihe(bezirk,daten){
+  try{
+    const key=`zeitreihe_${bezirk}`;
+    const existing=JSON.parse(localStorage.getItem(key)||'[]');
+    // Durchschnittliche Dichte des Bezirks berechnen
+    const avg=daten.length>0?daten.reduce((s,d)=>s+d.dichte,0)/daten.length:0;
+    existing.push({
+      ts:Date.now(),
+      dichte:Math.round(avg*100),
+      strassen:daten.length
+    });
+    // Maximal 50 Einträge behalten
+    if(existing.length>50)existing.shift();
+    localStorage.setItem(key,JSON.stringify(existing));
+    document.getElementById('statMessungen').textContent=existing.length;
+    console.log('[Zeitreihe] Gespeichert:',existing.length,'Einträge');
+  }catch(e){console.warn('[Zeitreihe] Fehler:',e);}
+}
+
+function loadZeitreihe(bezirk){
+  try{
+    return JSON.parse(localStorage.getItem(`zeitreihe_${bezirk}`)||'[]');
+  }catch(e){return [];}
+}
+
+// ════════════════════════════════════════════════
+// NEU: PARKDICHTE DASHBOARD
+// ════════════════════════════════════════════════
+function toggleDichte(){
+  dichteVisible=!dichteVisible;
+  const panel=document.getElementById('dichtePanel');
+  const fab=document.getElementById('dichteFab');
+  panel.classList.toggle('visible',dichteVisible);
+  fab.classList.toggle('active',dichteVisible);
+  // Karte wechseln
+  if(dichteVisible){
+    switchTiles('light');
+    renderDichtePanel();
+    // Ergebnis-Karte verstecken um Platz zu sparen
+    hideResult();
+  }else{
+    switchTiles('voyager');
+  }
+}
+
+function switchDichteTab(tab,btn){
+  document.querySelectorAll('.dichte-tab').forEach(t=>t.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('tabStrassen').style.display=tab==='strassen'?'block':'none';
+  document.getElementById('tabZeitreihe').style.display=tab==='zeitreihe'?'block':'none';
+  document.getElementById('tabKarte').style.display=tab==='karte'?'block':'none';
+  if(tab==='zeitreihe')renderZeitreihenChart();
+}
+
+function renderDichtePanel(){
+  if(!strassenData.length){
+    document.getElementById('dichteList').innerHTML=
+      '<div style="color:var(--muted);font-size:12px;text-align:center;padding:20px">Straßennetz noch nicht geladen</div>';
+    return;
+  }
+  // Statistiken
+  const avg=strassenData.reduce((s,d)=>s+d.dichte,0)/strassenData.length;
+  document.getElementById('statDichte').textContent=Math.round(avg*100)+'%';
+  document.getElementById('statStrassen').textContent=strassenData.length;
+  const messungen=loadZeitreihe(selectedBezirk);
+  document.getElementById('statMessungen').textContent=messungen.length;
+
+  // Top 15 Straßen nach Dichte
+  const sorted=[...strassenData].sort((a,b)=>b.dichte-a.dichte).slice(0,15);
+  const list=document.getElementById('dichteList');
+  list.innerHTML=sorted.map(s=>{
+    const pct=Math.round(s.dichte*100);
+    const col=pct>70?'#ff5f5f':pct>40?'#f0c844':'#3ddc84';
+    return `<div class="bar-row">
+      <div class="bar-label" title="${s.name}">${s.name}</div>
+      <div class="bar-wrap">
+        <div class="bar-fill" style="width:${pct}%;background:${col}">${pct>30?pct+'%':''}</div>
+      </div>
+      <div class="bar-pct">${pct}%</div>
+    </div>`;
+  }).join('');
+}
+
+function renderZeitreihenChart(){
+  const data=loadZeitreihe(selectedBezirk);
+  if(!data.length){
+    document.getElementById('tabZeitreihe').innerHTML=
+      '<div style="color:var(--muted);font-size:12px;text-align:center;padding:20px">Noch keine Zeitreihen-Daten.<br>GPS-Button tippen zum Messen.</div>';
+    return;
+  }
+  const labels=data.map(d=>{
+    const dt=new Date(d.ts);
+    return `${dt.getHours()}:${String(dt.getMinutes()).padStart(2,'0')}`;
+  });
+  const werte=data.map(d=>d.dichte);
+
+  if(zeitChart){zeitChart.destroy();zeitChart=null;}
+  const ctx=document.getElementById('zeitChart');
+  if(!ctx)return;
+  zeitChart=new Chart(ctx,{
+    type:'line',
+    data:{
+      labels,
+      datasets:[{
+        label:'Parkdichte %',
+        data:werte,
+        borderColor:'#f0c844',
+        backgroundColor:'rgba(240,200,68,.12)',
+        fill:true,tension:0.4,pointRadius:3,borderWidth:2
+      }]
+    },
+    options:{
+      responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{display:false}},
+      scales:{
+        y:{min:0,max:100,grid:{color:'rgba(255,255,255,.06)'},ticks:{color:'#A0A0A0',font:{size:10},callback:v=>v+'%'}},
+        x:{grid:{display:false},ticks:{color:'#A0A0A0',font:{size:10},maxTicksLimit:6}}
+      }
+    }
+  });
+}
+
+// ════════════════════════════════════════════════
+// LADEZONEN (unverändert)
+// ════════════════════════════════════════════════
 async function loadLadezonen(bezirke){
   if(!Array.isArray(bezirke))bezirke=[bezirke];
   if(ladezonenLayer){map.removeLayer(ladezonenLayer);ladezonenLayer=null;}
   document.getElementById('ladezonenVal').textContent='lädt…';
   const filter=bezirke.length===1?`BEZIRK=${bezirke[0]}`:`BEZIRK+IN+(${bezirke.join(',')})`;
-  const csvUrl=`https://data.wien.gv.at/daten/geo?service=WFS&request=GetFeature&version=1.1.0`
-    +`&typeName=ogdwien:LADEZONENOGD&srsName=EPSG:4326&outputFormat=csv&CQL_FILTER=${filter}`;
+  const csvUrl=`https://data.wien.gv.at/daten/geo?service=WFS&request=GetFeature&version=1.1.0&typeName=ogdwien:LADEZONENOGD&srsName=EPSG:4326&outputFormat=csv&CQL_FILTER=${filter}`;
   for(let attempt=0;attempt<2;attempt++){
     try{
       const csv=await robustFetch(csvUrl,22000);
@@ -531,7 +890,6 @@ async function loadLadezonen(bezirke){
         if(coords.length<2)continue;
         const popup=`<b>🚚 Ladezone</b>`+(cols[addrIdx]?`<br>📍 ${cols[addrIdx]}`:'')+(cols[zeitraumIdx]?`<br>🕐 ${cols[zeitraumIdx]}`:'')+(cols[ausnahmeIdx]?`<br>ℹ️ ${cols[ausnahmeIdx]}`:'');
         L.polyline(coords,{color:'#007AFF',weight:5,opacity:0.9,lineCap:'round',lineJoin:'round'}).bindPopup(popup).addTo(ladezonenLayer);
-        // Daten für Park-Benachrichtigung speichern
         ladezonenData.push({coords,zeitraum:cols[zeitraumIdx]||'',ausnahme:cols[ausnahmeIdx]||'',adresse:cols[addrIdx]||''});
         count++;
       }
@@ -548,6 +906,9 @@ async function loadLadezonen(bezirke){
   document.getElementById('ladezonenVal').textContent='Nicht verfügbar';
 }
 
+// ════════════════════════════════════════════════
+// ANRAINERZONEN (unverändert)
+// ════════════════════════════════════════════════
 async function loadAnrainerZonen(bez){
   if(!Array.isArray(bez))bez=[bez];
   if(anrainerLayer){map.removeLayer(anrainerLayer);anrainerLayer=null;}
@@ -583,7 +944,6 @@ async function loadAnrainerZonen(bez){
         const info=infoIdx>=0?cols[infoIdx]||'':'';
         const popup=`<b>🅿️ AnrainerInnen-Parkplatz</b>`+(addr?`<br>📍 ${addr}`:'')+(stellpl?`<br>🚗 ${stellpl} Stellplätze`:'')+(ausnahme?`<br>📋 ${ausnahme}`:'')+(info&&info!=='null'&&info.startsWith('http')?`<br><a href="${info}" target="_blank" style="color:#AF52DE">ℹ️ Mehr Info</a>`:'');
         L.polyline(coords,{color:'#AF52DE',weight:5,opacity:0.9,lineCap:'round',lineJoin:'round'}).bindPopup(popup).addTo(anrainerLayer);
-        // Daten für Park-Benachrichtigung speichern
         anrainerData.push({coords,adresse:addr});
         count++;
       }
@@ -600,6 +960,9 @@ async function loadAnrainerZonen(bez){
   document.getElementById('anrainerVal').textContent='Nicht verfügbar';
 }
 
+// ════════════════════════════════════════════════
+// HILFSFUNKTIONEN
+// ════════════════════════════════════════════════
 function parseCSVLine(line){
   const result=[];let cur='',inQ=false;
   for(let i=0;i<line.length;i++){
@@ -619,6 +982,15 @@ function placeMarker(lat,lng,acc){
   document.getElementById('accVal').textContent=acc?`±${Math.round(acc)}m`:'Karten-Klick';
 }
 
+function distanceM(lat1,lng1,lat2,lng2){
+  const R=6371000,dLat=(lat2-lat1)*Math.PI/180,dLng=(lng2-lng1)*Math.PI/180;
+  const a=Math.sin(dLat/2)**2+Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLng/2)**2;
+  return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
+}
+
+// ════════════════════════════════════════════════
+// GPS & ZONE CHECK
+// ════════════════════════════════════════════════
 async function checkPoint(lat,lng){
   if(!selectedBezirk){showResult('','⚠️','Bezirk fehlt','Tippe oben auf "Bezirk wählen"');return;}
   showResult('checking','⏳','Prüfe Zone…','Anfrage läuft…');
@@ -628,40 +1000,21 @@ async function checkPoint(lat,lng){
   const url=`${WFS}&typeName=ogdwien:PARKENBERECHTOGD&BBOX=${bbox}`;
   let data=null;
   try{
-    // gpsData=true → DSGVO: nur Cloudflare Worker, keine Drittanbieter
     const txt=await robustFetch(url,18000,true);
     const parsed=JSON.parse(txt);
-    if(parsed&&parsed.features){
-      data=parsed;
-      document.getElementById('apiStatusVal').textContent='OK';
-    }
-  }catch(e){
-    console.warn('[checkPoint] fehlgeschlagen:',e.message);
-  }
+    if(parsed&&parsed.features){data=parsed;document.getElementById('apiStatusVal').textContent='OK';}
+  }catch(e){console.warn('[checkPoint] fehlgeschlagen:',e.message);}
   document.getElementById('lastCheckVal').textContent=new Date().toLocaleTimeString('de-AT');
-  if(!data){
-    showResult('','🚫','Nicht erreichbar','Netzwerk prüfen & nochmal tippen');
-    document.getElementById('apiStatusVal').textContent='fehlgeschlagen';
-    showToast('Nochmal tippen – Verbindung prüfen','error');return;
-  }
+  if(!data){showResult('','🚫','Nicht erreichbar','Netzwerk prüfen & nochmal tippen');document.getElementById('apiStatusVal').textContent='fehlgeschlagen';showToast('Nochmal tippen – Verbindung prüfen','error');return;}
   const inZone=data.features.filter(f=>pointInFeature([lng,lat],f));
-  if(!inZone.length){
-    showResult('outside','❌','Keine Pickerlzone','Hier gilt keine Kurzparkzonen-Berechtigungszone');
-    haptic('light');sendNotif('Kein Pickerl nötig','Keine Zone hier.');return;
-  }
+  if(!inZone.length){showResult('outside','❌','Keine Pickerlzone','Hier gilt keine Kurzparkzonen-Berechtigungszone');haptic('light');sendNotif('Kein Pickerl nötig','Keine Zone hier.');return;}
   const hasBez=inZone.some(f=>Object.keys(f.properties).some(k=>/bez/i.test(k)));
   if(!hasBez){showResult('inside','🅿️','Zone vorhanden','Kurzparkzone – Bezirk nicht im Datensatz');haptic('medium');return;}
   const zoneBezirke=getZoneBezirke(selectedBezirk);
   const match=inZone.filter(f=>Object.keys(f.properties).some(k=>/bez/i.test(k)&&zoneBezirke.includes(parseInt(f.properties[k]))));
   const zoneLabel=ZONE_META[String(selectedBezirk)]?.short||`${selectedBezirk}. Bezirk`;
-  if(match.length){
-    showResult('inside','✅','Pickerlzone gültig!',`${zoneLabel} – Pickerl gilt hier`);
-    haptic('success');
-  }else{
-    const o=getBez(inZone[0]);
-    showResult('outside','❌','Andere Pickerlzone',o?`Zone des ${o}. Bezirks`:'Andere Pickerlzone');
-    haptic('error');
-  }
+  if(match.length){showResult('inside','✅','Pickerlzone gültig!',`${zoneLabel} – Pickerl gilt hier`);haptic('success');}
+  else{const o=getBez(inZone[0]);showResult('outside','❌','Andere Pickerlzone',o?`Zone des ${o}. Bezirks`:'Andere Pickerlzone');haptic('error');}
 }
 
 function getBez(f){for(const k of Object.keys(f.properties)){if(/bez/i.test(k)&&f.properties[k]){try{return parseInt(f.properties[k]);}catch(e){}}}return null;}
@@ -672,167 +1025,76 @@ function startTracking(){
   if(!selectedBezirk){showToast('Bitte zuerst Bezirk auswählen!','info');openBezirkSheet();return;}
   if(watchId!==null)return;
   const fab=document.getElementById('gpsFab');
-  fab.classList.add('loading');fab.innerHTML='<svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor"><path d="M12 2L4.5 20.29l.71.71L12 18l6.79 3 .71-.71z"/></svg>';
+  fab.classList.add('loading');
   showResult('checking','📡','GPS…','Standort wird ermittelt…');
   watchId=navigator.geolocation.watchPosition(pos=>{
     fab.classList.remove('loading');
-    fab.innerHTML='<svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor"><path d="M12 2L4.5 20.29l.71.71L12 18l6.79 3 .71-.71z"/></svg>';
     const{latitude:lat,longitude:lng,accuracy:acc}=pos.coords;
-    // Sehr ungenaue Positionen ignorieren (>200m = GPS noch nicht eingerastet)
-    if(acc&&acc>200){console.log('[GPS] Zu ungenau:',acc,'m – warte...');return;}
+    if(acc&&acc>200){return;}
     placeMarker(lat,lng,acc);savePos(lat,lng);
     if(followMode)map.setView([lat,lng],16,{animate:true});
-    // Geschwindigkeit ermitteln (GPS liefert m/s → umrechnen in km/h)
     const speedMs=pos.coords.speed||0;
     const speedKmh=speedMs*3.6;
     lastSpeed=speedKmh;
-
-    // Merken wann zuletzt schnell gefahren (>15 km/h)
     if(speedKmh>15)lastHighSpeed=Date.now();
-
-    // Auto-Modus bestätigen wenn >25 km/h → beweist dass mit Auto unterwegs
-    if(speedKmh>25&&!carModeConfirmed){
-      carModeConfirmed=true;
-      console.log('[ParkSense] Auto-Modus aktiviert –',speedKmh.toFixed(1),'km/h erkannt');
-      showToast('🚗 Auto-Modus aktiv – ParkSense aktiviert','info');
-    }
-
+    if(speedKmh>25&&!carModeConfirmed){carModeConfirmed=true;showToast('🚗 Auto-Modus aktiv – ParkSense aktiviert','info');}
     const moved=lastLat===null||distanceM(lat,lng,lastLat,lastLng)>30;
     lastLat=lat;lastLng=lng;
-
     if(moved){
       checkPoint(lat,lng);
-      // Bewegung erkannt → Park-Timer zurücksetzen
       if(parkTimer){clearTimeout(parkTimer);parkTimer=null;}
       parkedLat=lat;parkedLng=lng;
-
-      // Nur starten wenn Auto-Modus bestätigt (mind. einmal >25 km/h)
       if(carModeConfirmed){
-        // Intelligente Wartezeit:
-        // War in letzten 60 Sek schneller als 15 km/h → Ampel-Modus → 60 Sek warten
-        // Sonst (langsames Parkmanöver/Rückwärts) → 25 Sek warten
         const secSinceHighSpeed=(Date.now()-lastHighSpeed)/1000;
-        const waitMs=secSinceHighSpeed<60 ? 60000 : 25000;
-        const modeLabel=secSinceHighSpeed<60?'Ampel-Modus (60s)':'Park-Modus (25s)';
-        console.log('[ParkTimer] Starte Timer:',modeLabel,'| Letzte Geschw:',speedKmh.toFixed(1),'km/h');
+        const waitMs=secSinceHighSpeed<60?60000:25000;
         parkTimer=setTimeout(()=>checkParkNotification(lat,lng),waitMs);
-      } else {
-        // Noch nicht Auto-Modus – aber vielleicht wird er noch aktiviert
-        // Timer mit längerer Wartezeit starten, wird abgebrochen wenn kein Auto
-        parkTimer=setTimeout(()=>{
-          if(carModeConfirmed)checkParkNotification(lat,lng);
-        },90000); // 90 Sek Fallback
+      }else{
+        parkTimer=setTimeout(()=>{if(carModeConfirmed)checkParkNotification(lat,lng);},90000);
       }
     }
   },err=>{
     fab.classList.remove('loading');
-    fab.innerHTML='<svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor"><path d="M12 2L4.5 20.29l.71.71L12 18l6.79 3 .71-.71z"/></svg>';
     watchId=null;
-    console.warn('[GPS] Fehler Code:',err.code,'–',err.message);
-    if(err.code===1){
-      // Permission denied
-      showResult('','🚫','GPS gesperrt','Einstellungen → Datenschutz → Ortungsdienste aktivieren');
-      showToast('GPS-Berechtigung verweigert','error');
-    } else if(err.code===2){
-      // Position unavailable - automatisch nochmal versuchen
-      showResult('','📡','GPS sucht…','Kurz ins Freie gehen hilft');
-      showToast('GPS Signal schwach – nochmal tippen','error');
-    } else if(err.code===3){
-      // Timeout - nochmal versuchen
-      showResult('','⏳','GPS Timeout','Nochmal tippen oder ins Freie gehen');
-      showToast('GPS Timeout – nochmal tippen','error');
-    }
+    if(err.code===1){showResult('','🚫','GPS gesperrt','Einstellungen → Ortungsdienste aktivieren');showToast('GPS-Berechtigung verweigert','error');}
+    else if(err.code===2){showResult('','📡','GPS sucht…','Kurz ins Freie gehen hilft');showToast('GPS Signal schwach – nochmal tippen','error');}
+    else if(err.code===3){showResult('','⏳','GPS Timeout','Nochmal tippen oder ins Freie gehen');showToast('GPS Timeout – nochmal tippen','error');}
   },{enableHighAccuracy:true,maximumAge:0,timeout:30000});
-  map.on('dragstart',()=>{followMode=false;document.getElementById('gpsFab').innerHTML='<svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor" style="opacity:.5"><path d="M12 2L4.5 20.29l.71.71L12 18l6.79 3 .71-.71z"/></svg>';});
+  map.on('dragstart',()=>{followMode=false;});
 }
 
 function getLocation(){
-  followMode=true;document.getElementById('gpsFab').innerHTML='<svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor"><path d="M12 2L4.5 20.29l.71.71L12 18l6.79 3 .71-.71z"/></svg>';
+  followMode=true;
   if(watchId===null){startTracking();}
   else if(lastLat!==null){map.setView([lastLat,lastLng],16,{animate:true});}
 }
 
-// ── Park-Benachrichtigung nach intelligentem Stillstand ──
 function checkParkNotification(lat,lng){
-  // Letzte Sicherheitsprüfung: wenn wieder schnell → abbrechen
-  if(lastSpeed>8){
-    console.log('[ParkTimer] Abgebrochen – Geschwindigkeit zu hoch:',lastSpeed,'km/h');
-    return;
-  }
-  // Prüfen ob noch am gleichen Ort (max 20m Abweichung)
-  if(parkedLat&&distanceM(lat,lng,parkedLat,parkedLng)>20){
-    console.log('[ParkTimer] Abgebrochen – Position geändert');
-    return;
-  }
-  // Prüfe ob in Kurzparkzone
-  const resultTitle=document.getElementById('resultTitle').textContent;
+  if(lastSpeed>8||parkedLat&&distanceM(lat,lng,parkedLat,parkedLng)>20)return;
   const resultCard=document.getElementById('resultCard');
-
-  // Kurzparkzone: gilt bei 'inside' (eigene Zone) UND 'outside' (andere Zone)
-  // Beide Fälle bedeuten: du stehst in einer gebührenpflichtigen Zone!
   if(resultCard.classList.contains('inside')||resultCard.classList.contains('outside')){
-    sendParkNotif(
-      '🅿️ Kurzparkzone – Gebührenpflichtig',
-      'Maximale Parkdauer: 1,5 Stunden. Bitte Parkschein lösen!'
-    );
-    return;
+    sendParkNotif('🅿️ Kurzparkzone – Gebührenpflichtig','Maximale Parkdauer: 1,5 Stunden. Bitte Parkschein lösen!');return;
   }
-
-  // Ladezone prüfen – nähe zu einer Ladezone?
   const nearLadezone=findNearestZone(lat,lng,ladezonenData);
-  if(nearLadezone){
-    const zeitraum=nearLadezone.zeitraum||'';
-    const ausnahme=nearLadezone.ausnahme||'';
-    let msg='';
-    if(ausnahme&&ausnahme.length>3){
-      msg=`Ausnahme: ${ausnahme}`;
-    } else if(zeitraum&&zeitraum.length>3){
-      msg=`Ladezeit: ${zeitraum}`;
-    } else {
-      msg='Nur für Ladefahrzeuge!';
-    }
-    sendParkNotif('🚚 Achtung – Ladezone!', msg);
-    return;
-  }
-
-  // Anrainerzone prüfen
+  if(nearLadezone){sendParkNotif('🚚 Achtung – Ladezone!',nearLadezone.ausnahme||nearLadezone.zeitraum||'Nur für Ladefahrzeuge!');return;}
   const nearAnrainer=findNearestZone(lat,lng,anrainerData);
-  if(nearAnrainer){
-    const adresse=nearAnrainer.adresse||'';
-    sendParkNotif(
-      '🟣 Anrainerzone',
-      'Nur für Anrainer mit Parkberechtigung!'+(adresse?` (${adresse})`:'')
-    );
-    return;
-  }
+  if(nearAnrainer){sendParkNotif('🟣 Anrainerzone','Nur für Anrainer mit Parkberechtigung!');return;}
 }
 
-// Prüft ob Punkt nahe einer Zone ist (max 30m)
 function findNearestZone(lat,lng,zoneList){
-  for(const zone of zoneList){
-    for(const [zLat,zLng] of zone.coords){
-      if(distanceM(lat,lng,zLat,zLng)<30)return zone;
-    }
-  }
+  for(const zone of zoneList){for(const[zLat,zLng] of zone.coords){if(distanceM(lat,lng,zLat,zLng)<30)return zone;}}
   return null;
 }
 
-// Park-Benachrichtigung senden
 function sendParkNotif(title,body){
   showToast(title,'info');
-  if(Notification?.permission==='granted'){
-    new Notification(title,{body,icon:'/icon-192.png'});
-  }
-}
-
-function distanceM(lat1,lng1,lat2,lng2){
-  const R=6371000,dLat=(lat2-lat1)*Math.PI/180,dLng=(lng2-lng1)*Math.PI/180;
-  const a=Math.sin(dLat/2)**2+Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLng/2)**2;
-  return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
+  if(Notification?.permission==='granted')new Notification(title,{body,icon:'/icon-192.png'});
 }
 
 function haptic(t){if(!('vibrate'in navigator))return;({light:[10],medium:[20],success:[10,50,10],error:[50,30,50]}[t]||[10]).length&&navigator.vibrate(({light:[10],medium:[20],success:[10,50,10],error:[50,30,50]}[t]||[10]));}
 
+// ════════════════════════════════════════════════
+// UI HILFSFUNKTIONEN
+// ════════════════════════════════════════════════
 function showResult(cls,icon,title,sub){
   const c=document.getElementById('resultCard');
   c.className='visible'+(cls?' '+cls:'');
@@ -860,7 +1122,11 @@ function closeSheet(){
 }
 
 function savePos(lat,lng){try{localStorage.setItem(STORAGE.POS,JSON.stringify({lat,lng,ts:Date.now()}));}catch(e){}}
-function clearSavedPos(){try{localStorage.removeItem(STORAGE.POS);}catch(e){}showToast('Cache gelöscht','info');document.getElementById('lastCheckVal').textContent='—';}
+function clearSavedPos(){
+  try{localStorage.removeItem(STORAGE.POS);}catch(e){}
+  showToast('Cache gelöscht','info');
+  document.getElementById('lastCheckVal').textContent='—';
+}
 
 async function requestNotifications(){
   if(!('Notification'in window)){showToast('Nicht unterstützt','error');return;}
@@ -872,195 +1138,67 @@ function sendNotif(title,body){if(Notification?.permission==='granted')new Notif
 function updateNotifStatus(){document.getElementById('notifStatusVal').textContent=!('Notification'in window)?'Nicht unterstützt':Notification.permission==='granted'?'Aktiv ✅':'Inaktiv';}
 
 let toastTimer;
-function showToast(msg,type='info',isHtml=false){const t=document.getElementById('toast');if(isHtml){t.innerHTML=msg;}else{t.textContent=msg;}t.className=`toast ${type} show`;clearTimeout(toastTimer);toastTimer=setTimeout(()=>t.classList.remove('show'),3000);}
+function showToast(msg,type='info',isHtml=false){
+  const t=document.getElementById('toast');
+  if(isHtml){t.innerHTML=msg;}else{t.textContent=msg;}
+  t.className=`toast ${type} show`;
+  clearTimeout(toastTimer);
+  toastTimer=setTimeout(()=>t.classList.remove('show'),3000);
+}
 
-function updateOnline(){const o=!navigator.onLine;document.getElementById('offlineBanner').classList.toggle('visible',o);document.getElementById('mapOffline').classList.toggle('visible',o);}
-window.addEventListener('online',updateOnline);window.addEventListener('offline',updateOnline);updateOnline();
+function updateOnline(){
+  const o=!navigator.onLine;
+  document.getElementById('offlineBanner').classList.toggle('visible',o);
+  document.getElementById('mapOffline').classList.toggle('visible',o);
+}
+window.addEventListener('online',updateOnline);
+window.addEventListener('offline',updateOnline);
+updateOnline();
 
-// ══════════════════════════════════════════════════════════════
-// PWA – alles inline, keine externen Dateien nötig
-// ══════════════════════════════════════════════════════════════
-
-// ── 1. App-Icon als SVG Data-URL (gelbes P auf dunklem Grund) ──
-const ICON_SVG=`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192">
-  <rect width="192" height="192" rx="40" fill="#1C1C1E"/>
-  <text x="96" y="142" font-family="Arial Black,Helvetica,sans-serif" font-size="122"
-    font-weight="900" text-anchor="middle" fill="#f0c844">P</text>
-</svg>`;
+// ════════════════════════════════════════════════
+// PWA
+// ════════════════════════════════════════════════
+const ICON_SVG=`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192"><rect width="192" height="192" rx="40" fill="#1C1C1E"/><text x="96" y="142" font-family="Arial Black,Helvetica,sans-serif" font-size="122" font-weight="900" text-anchor="middle" fill="#f0c844">P</text></svg>`;
 const ICON_URL='data:image/svg+xml;base64,'+btoa(unescape(encodeURIComponent(ICON_SVG)));
 document.getElementById('appleTouchIcon').href=ICON_URL;
 
-// ── 2. Web App Manifest als Blob-URL ──────────────────────────
-const manifest={
-  name:'Parktracker Wien',
-  short_name:'Parktracker',
-  description:'Prüfe ob dein Wiener Parkpickerl gilt – gratis, offline-fähig.',
-  start_url:'./',
-  scope:'./',
-  display:'standalone',
-  background_color:'#1C1C1E',
-  theme_color:'#007AFF',
-  orientation:'portrait-primary',
-  lang:'de-AT',
-  categories:['navigation','utilities'],
-  icons:[
-    {src:ICON_URL,sizes:'192x192',type:'image/svg+xml',purpose:'any maskable'},
-    {src:ICON_URL,sizes:'512x512',type:'image/svg+xml',purpose:'any maskable'}
-  ],
-  shortcuts:[{
-    name:'Jetzt prüfen',
-    short_name:'Prüfen',
-    url:'./?action=check',
-    icons:[{src:ICON_URL,sizes:'192x192'}]
-  }]
-};
+const manifest={name:'Parktracker Wien',short_name:'Parktracker',description:'Parkdichte + Pickerl-Check für Wien.',start_url:'./',scope:'./',display:'standalone',background_color:'#1C1C1E',theme_color:'#007AFF',orientation:'portrait-primary',lang:'de-AT',categories:['navigation','utilities'],icons:[{src:ICON_URL,sizes:'192x192',type:'image/svg+xml',purpose:'any maskable'},{src:ICON_URL,sizes:'512x512',type:'image/svg+xml',purpose:'any maskable'}]};
 const mBlob=new Blob([JSON.stringify(manifest)],{type:'application/manifest+json'});
 document.getElementById('pwaManifest').href=URL.createObjectURL(mBlob);
 
-// ── 3. Service Worker als Blob (Offline-Cache der App-Shell) ──
-const SW_CODE=`
-const CACHE='parktracker-v3';
-self.addEventListener('install',e=>{
-  e.waitUntil(
-    caches.open(CACHE)
-      .then(c=>c.add(new Request(self.location.href.replace(/\\/[^/]*$/, '/'),{cache:'reload'})))
-      .then(()=>self.skipWaiting())
-      .catch(()=>self.skipWaiting())
-  );
-});
-self.addEventListener('activate',e=>{
-  e.waitUntil(
-    caches.keys()
-      .then(keys=>Promise.all(keys.filter(k=>k!==CACHE).map(k=>caches.delete(k))))
-      .then(()=>self.clients.claim())
-  );
-});
-self.addEventListener('fetch',e=>{
-  if(e.request.method!=='GET')return;
-  const url=new URL(e.request.url);
-  // Externe APIs immer live (Karten, OGD Wien)
-  if(url.hostname!==self.location.hostname){
-    e.respondWith(
-      fetch(e.request).catch(()=>caches.match(e.request)||new Response('',{status:503}))
-    );
-    return;
-  }
-  // App-Shell: Cache-first, im Hintergrund aktualisieren
-  e.respondWith(
-    caches.match(e.request).then(cached=>{
-      const fresh=fetch(e.request).then(res=>{
-        if(res&&res.ok){
-          const clone=res.clone();
-          caches.open(CACHE).then(c=>c.put(e.request,clone));
-        }
-        return res;
-      }).catch(()=>cached||new Response('',{status:503}));
-      return cached||fresh;
-    })
-  );
-});`;
+const SW_CODE=`const CACHE='parktracker-v4';self.addEventListener('install',e=>{e.waitUntil(caches.open(CACHE).then(c=>c.add(new Request(self.location.href.replace(/\\/[^/]*$/,'/'))).catch(()=>{})).then(()=>self.skipWaiting()).catch(()=>self.skipWaiting()));});self.addEventListener('activate',e=>{e.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k!==CACHE).map(k=>caches.delete(k)))).then(()=>self.clients.claim()));});self.addEventListener('fetch',e=>{if(e.request.method!=='GET')return;const url=new URL(e.request.url);if(url.hostname!==self.location.hostname){e.respondWith(fetch(e.request).catch(()=>caches.match(e.request)||new Response('',{status:503})));return;}e.respondWith(caches.match(e.request).then(cached=>{const fresh=fetch(e.request).then(res=>{if(res&&res.ok){const clone=res.clone();caches.open(CACHE).then(c=>c.put(e.request,clone));}return res;}).catch(()=>cached||new Response('',{status:503}));return cached||fresh;}));});`;
 if('serviceWorker'in navigator){
   try{
     const swBlob=new Blob([SW_CODE],{type:'application/javascript'});
     const swUrl=URL.createObjectURL(swBlob);
-    navigator.serviceWorker.register(swUrl,{scope:'./'})
-      .then(reg=>{
-        console.log('[SW] ✅ Registriert, scope:',reg.scope);
-        reg.update();
-      })
-      .catch(e=>console.warn('[SW] Fehler (normal bei file://):',e.message));
-
+    navigator.serviceWorker.register(swUrl,{scope:'./'}).then(reg=>{reg.update();}).catch(e=>console.warn('[SW] Fehler:',e.message));
   }catch(e){console.warn('[SW] Blob-Fehler:',e);}
 }
 
-// ── 4. Install-Logik: Android + iOS ──────────────────────────
 let deferredPrompt=null;
 const isIos=()=>/iphone|ipad|ipod/i.test(navigator.userAgent)&&!window.MSStream;
-const isStandalone=()=>
-  window.matchMedia('(display-mode:standalone)').matches||
-  navigator.standalone===true;
+const isStandalone=()=>window.matchMedia('(display-mode:standalone)').matches||navigator.standalone===true;
 const IOS_KEY='pp_ios_hint_v2';
 
 function showIosHint(){
   if(document.getElementById('iosInstallModal'))return;
-  const modal=document.createElement('div');
-  modal.id='iosInstallModal';
-  modal.innerHTML=`<div class="ios-modal-box">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
-      <div style="display:flex;align-items:center;gap:12px">
-        <div style="background:#f0c844;border-radius:14px;width:48px;height:48px;
-          display:flex;align-items:center;justify-content:center;
-          font-size:28px;font-weight:900;color:#000;font-family:system-ui,sans-serif;
-          box-shadow:0 4px 12px rgba(240,200,68,.4)">P</div>
-        <div>
-          <div style="font-weight:700;font-size:17px;letter-spacing:-.3px">Parktracker installieren</div>
-          <div style="font-size:12px;color:#8E8E93;margin-top:2px">Kostenlos · Offline · Kein App Store</div>
-        </div>
-      </div>
-      <button id="iosCloseBtn"
-        style="background:rgba(255,255,255,.12);border:none;color:#fff;border-radius:50%;
-        width:32px;height:32px;font-size:16px;cursor:pointer;flex-shrink:0">✕</button>
-    </div>
-    <div class="ios-step">
-      <div class="ios-step-num">1</div>
-      <div>Tippe auf das <strong style="color:#007AFF">Teilen-Symbol ⬆️</strong><br>
-        <span style="color:#8E8E93;font-size:12px">Unten in der Safari-Leiste</span></div>
-    </div>
-    <div class="ios-step">
-      <div class="ios-step-num">2</div>
-      <div>Wähle <strong style="color:#007AFF">„Zum Home-Bildschirm"</strong><br>
-        <span style="color:#8E8E93;font-size:12px">Im Teilen-Menü nach unten scrollen</span></div>
-    </div>
-    <div class="ios-step" style="margin-bottom:0">
-      <div class="ios-step-num">3</div>
-      <div>Tippe oben rechts auf <strong style="color:#007AFF">„Hinzufügen"</strong> 🎉<br>
-        <span style="color:#8E8E93;font-size:12px">Die App erscheint auf deinem Homescreen</span></div>
-    </div>
-    <div style="margin-top:16px;padding-top:14px;border-top:1px solid rgba(255,255,255,.08);
-      font-size:11px;color:#636366;text-align:center">
-      Nur in Safari auf iPhone &amp; iPad verfügbar
-    </div>
-  </div>`;
+  const modal=document.createElement('div');modal.id='iosInstallModal';
+  modal.innerHTML=`<div class="ios-modal-box"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px"><div style="display:flex;align-items:center;gap:12px"><div style="background:#f0c844;border-radius:14px;width:48px;height:48px;display:flex;align-items:center;justify-content:center;font-size:28px;font-weight:900;color:#000;font-family:system-ui,sans-serif;box-shadow:0 4px 12px rgba(240,200,68,.4)">P</div><div><div style="font-weight:700;font-size:17px;letter-spacing:-.3px">Parktracker installieren</div><div style="font-size:12px;color:#8E8E93;margin-top:2px">Kostenlos · Offline · Kein App Store</div></div></div><button id="iosCloseBtn" style="background:rgba(255,255,255,.12);border:none;color:#fff;border-radius:50%;width:32px;height:32px;font-size:16px;cursor:pointer;flex-shrink:0">✕</button></div><div class="ios-step"><div class="ios-step-num">1</div><div>Tippe auf das <strong style="color:#007AFF">Teilen-Symbol ⬆️</strong><br><span style="color:#8E8E93;font-size:12px">Unten in der Safari-Leiste</span></div></div><div class="ios-step"><div class="ios-step-num">2</div><div>Wähle <strong style="color:#007AFF">„Zum Home-Bildschirm"</strong></div></div><div class="ios-step" style="margin-bottom:0"><div class="ios-step-num">3</div><div>Tippe oben rechts auf <strong style="color:#007AFF">„Hinzufügen"</strong> 🎉</div></div></div>`;
   document.body.appendChild(modal);
-  const close=()=>{
-    modal.style.opacity='0';
-    modal.style.transition='opacity .25s';
-    setTimeout(()=>modal.remove(),250);
-    localStorage.setItem(IOS_KEY,'1');
-  };
+  const close=()=>{modal.style.opacity='0';modal.style.transition='opacity .25s';setTimeout(()=>modal.remove(),250);localStorage.setItem(IOS_KEY,'1');};
   document.getElementById('iosCloseBtn').onclick=close;
   modal.addEventListener('click',e=>{if(e.target===modal)close();});
 }
 
-// Android/Chrome: nativer Install-Banner
-window.addEventListener('beforeinstallprompt',e=>{
-  e.preventDefault();
-  deferredPrompt=e;
-  if(!isStandalone())document.getElementById('installBanner').classList.add('visible');
-});
-window.addEventListener('appinstalled',()=>{
-  document.getElementById('installBanner').classList.remove('visible');
-  showToast('🎉 App installiert! Schau auf deinen Homescreen','success');
-  deferredPrompt=null;
-});
-document.getElementById('installBtn').onclick=async()=>{
-  if(!deferredPrompt)return;
-  deferredPrompt.prompt();
-  const{outcome}=await deferredPrompt.userChoice;
-  if(outcome==='accepted')showToast('App installiert! 🎉','success');
-  document.getElementById('installBanner').classList.remove('visible');
-  deferredPrompt=null;
-};
-document.getElementById('dismissBtn').onclick=()=>{
-  document.getElementById('installBanner').classList.remove('visible');
-  localStorage.setItem(IOS_KEY,'1');
-};
+window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();deferredPrompt=e;if(!isStandalone())document.getElementById('installBanner').classList.add('visible');});
+window.addEventListener('appinstalled',()=>{document.getElementById('installBanner').classList.remove('visible');showToast('🎉 App installiert!','success');deferredPrompt=null;});
+document.getElementById('installBtn').onclick=async()=>{if(!deferredPrompt)return;deferredPrompt.prompt();const{outcome}=await deferredPrompt.userChoice;if(outcome==='accepted')showToast('App installiert! 🎉','success');document.getElementById('installBanner').classList.remove('visible');deferredPrompt=null;};
+document.getElementById('dismissBtn').onclick=()=>{document.getElementById('installBanner').classList.remove('visible');localStorage.setItem(IOS_KEY,'1');};
+if(isIos()&&!isStandalone()&&!localStorage.getItem(IOS_KEY)){setTimeout(showIosHint,2000);}
 
-// iOS: Hinweis nach 2 Sek., nur einmal, nur wenn nicht installiert
-if(isIos()&&!isStandalone()&&!localStorage.getItem(IOS_KEY)){
-  setTimeout(showIosHint,2000);
-}
-
+// ════════════════════════════════════════════════
+// START
+// ════════════════════════════════════════════════
 initMap();
 initOnboarding();
 updateNotifStatus();
