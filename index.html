@@ -610,19 +610,39 @@ function navSearchInput(query){
 }
 
 async function ladeAdressVorschlaege(query){
-  const suchanfrage=`${query}, Wien, Österreich`;
-  const url=`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(suchanfrage)}&limit=5&countrycodes=at`;
+  const box=document.getElementById('navSuggestions');
+  box.innerHTML='<div class="nav-suggestion-item" style="color:var(--muted)">Suche…</div>';
+
+  // Wien Bounding Box für Ergebnis-Priorisierung (lockt Treffer Richtung Wien)
+  const viewbox='16.18,48.32,16.58,48.10'; // links,oben,rechts,unten
+  const params=`format=json&limit=8&countrycodes=at&addressdetails=1&viewbox=${viewbox}&bounded=0`;
+
+  // 1. Versuch: strukturierte Straßensuche (street=) – präziser für Straßennamen
+  const urlStreet=`https://nominatim.openstreetmap.org/search?${params}&street=${encodeURIComponent(query)}&city=Wien`;
+  // 2. Versuch (Fallback): freie Textsuche
+  const urlFree=`https://nominatim.openstreetmap.org/search?${params}&q=${encodeURIComponent(query+', Wien, Österreich')}`;
+
   try{
-    const res=await fetchWithTimeout(url,8000);
-    const data=await res.json();
-    const box=document.getElementById('navSuggestions');
-    if(!data.length){box.innerHTML='<div class="nav-suggestion-item" style="color:var(--muted)">Keine Ergebnisse</div>';return;}
+    let res=await fetchWithTimeout(urlStreet,8000);
+    let data=await res.json();
+
+    if(!data.length){
+      res=await fetchWithTimeout(urlFree,8000);
+      data=await res.json();
+    }
+
+    if(!data.length){
+      box.innerHTML='<div class="nav-suggestion-item" style="color:var(--muted)">Keine Ergebnisse – ganzen Namen versuchen</div>';
+      return;
+    }
+
     box.innerHTML=data.map(d=>{
       const label=d.display_name.split(',').slice(0,3).join(',');
       return `<div class="nav-suggestion-item" onclick='navWaehleZiel(${d.lat},${d.lon},"${label.replace(/"/g,'&quot;')}")'>📍 ${label}</div>`;
     }).join('');
   }catch(e){
     console.warn('[Nominatim] Fehler:',e.message);
+    box.innerHTML='<div class="nav-suggestion-item" style="color:var(--red)">Suche fehlgeschlagen</div>';
   }
 }
 
@@ -636,12 +656,22 @@ function navWaehleZiel(lat,lng,label){
 async function navSearchGo(){
   const query=document.getElementById('navSearchInput').value.trim();
   if(!query)return;
-  const suchanfrage=`${query}, Wien, Österreich`;
-  const url=`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(suchanfrage)}&limit=1&countrycodes=at`;
+
+  const viewbox='16.18,48.32,16.58,48.10';
+  const params=`format=json&limit=1&countrycodes=at&viewbox=${viewbox}&bounded=0`;
+  const urlStreet=`https://nominatim.openstreetmap.org/search?${params}&street=${encodeURIComponent(query)}&city=Wien`;
+  const urlFree=`https://nominatim.openstreetmap.org/search?${params}&q=${encodeURIComponent(query+', Wien, Österreich')}`;
+
   try{
     showToast('🔍 Suche…','info');
-    const res=await fetchWithTimeout(url,8000);
-    const data=await res.json();
+    let res=await fetchWithTimeout(urlStreet,8000);
+    let data=await res.json();
+
+    if(!data.length){
+      res=await fetchWithTimeout(urlFree,8000);
+      data=await res.json();
+    }
+
     if(!data.length){showToast('Adresse nicht gefunden','error');return;}
     const label=data[0].display_name.split(',').slice(0,3).join(',');
     navWaehleZiel(data[0].lat,data[0].lon,label);
