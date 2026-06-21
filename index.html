@@ -71,6 +71,32 @@ header{display:flex;align-items:center;justify-content:space-between;padding:10p
 #dichteFab:active{transform:scale(.92)}
 #dichteFab.active{background:rgba(240,200,68,.3);border:1.5px solid #f0c844}
 
+/* NEU: Navigation FAB */
+#navFab{position:absolute;bottom:calc(28px + 56px + 10px + 56px + 10px + 56px + 10px + var(--safe-bot));right:16px;width:56px;height:56px;background:#16181FE6;color:#fff;border:none;border-radius:50%;cursor:pointer;z-index:400;box-shadow:0 2px 8px rgba(0,0,0,.25);display:flex;align-items:center;justify-content:center;font-size:22px;transition:transform .15s,background .2s}
+#navFab:active{transform:scale(.92)}
+#navFab.active{background:rgba(74,158,255,.3);border:1.5px solid #4a9eff}
+
+/* NEU: Such-Leiste für Navigation */
+#navSearchBar{position:absolute;top:8px;left:16px;right:16px;background:rgba(22,24,31,.95);backdrop-filter:blur(24px);border:1px solid rgba(74,158,255,.3);border-radius:16px;padding:12px 14px;z-index:460;display:none}
+#navSearchBar.visible{display:block}
+.nav-search-row{display:flex;align-items:center;gap:10px}
+.nav-search-input{flex:1;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:10px 14px;color:var(--text);font-family:var(--font-d);font-size:14px;outline:none}
+.nav-search-input::placeholder{color:var(--muted)}
+.nav-search-input:focus{border-color:#4a9eff}
+.nav-search-btn{background:#4a9eff;border:none;border-radius:10px;width:42px;height:42px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:#fff;flex-shrink:0;font-size:16px}
+.nav-search-close{background:rgba(255,255,255,.08);border:none;color:var(--muted);width:32px;height:32px;border-radius:50%;cursor:pointer;flex-shrink:0;font-size:14px}
+.nav-suggestions{margin-top:8px;max-height:200px;overflow-y:auto}
+.nav-suggestion-item{padding:10px 12px;border-radius:8px;cursor:pointer;font-size:13px;color:var(--text);border-bottom:1px solid rgba(255,255,255,.05)}
+.nav-suggestion-item:hover,.nav-suggestion-item:active{background:rgba(74,158,255,.1)}
+.nav-suggestion-item:last-child{border-bottom:none}
+#navInfoCard{position:absolute;bottom:calc(28px + var(--safe-bot));left:16px;right:88px;background:rgba(22,24,31,.95);backdrop-filter:blur(24px);border:1px solid rgba(74,158,255,.4);border-radius:16px;padding:14px 16px;z-index:450;display:none;align-items:center;gap:12px}
+#navInfoCard.visible{display:flex}
+.nav-info-icon{font-size:24px;flex-shrink:0}
+.nav-info-body{flex:1;min-width:0}
+.nav-info-title{font-size:14px;font-weight:700;color:#fff}
+.nav-info-sub{font-size:11px;color:var(--muted);font-family:var(--font-m);margin-top:2px}
+.nav-info-close{background:rgba(255,255,255,.08);border:none;color:var(--muted);width:26px;height:26px;border-radius:50%;font-size:11px;cursor:pointer;flex-shrink:0}
+
 /* NEU: Dichte-Panel */
 #dichtePanel{position:absolute;top:8px;left:16px;right:16px;background:rgba(22,24,31,.95);backdrop-filter:blur(24px);border:1px solid rgba(240,200,68,.3);border-radius:16px;padding:16px;z-index:450;display:none;max-height:70vh;overflow-y:auto}
 #dichtePanel.visible{display:block}
@@ -225,6 +251,29 @@ header{display:flex;align-items:center;justify-content:space-between;padding:10p
   <!-- Karten-Modus Anzeige -->
   <div id="mapModeBadge">🔍 Analyse-Modus</div>
 
+  <!-- NEU: Navigation Suchleiste -->
+  <div id="navSearchBar">
+    <div class="nav-search-row">
+      <input type="text" id="navSearchInput" class="nav-search-input"
+        placeholder="Adresse oder Ort eingeben…"
+        oninput="navSearchInput(this.value)"
+        onkeydown="if(event.key==='Enter')navSearchGo()">
+      <button class="nav-search-btn" onclick="navSearchGo()">🧭</button>
+      <button class="nav-search-close" onclick="closeNavSearch()">✕</button>
+    </div>
+    <div class="nav-suggestions" id="navSuggestions"></div>
+  </div>
+
+  <!-- NEU: Navigation Info-Karte (Distanz/Zeit) -->
+  <div id="navInfoCard">
+    <span class="nav-info-icon">🧭</span>
+    <div class="nav-info-body">
+      <div class="nav-info-title" id="navInfoTitle">Route berechnet</div>
+      <div class="nav-info-sub" id="navInfoSub">—</div>
+    </div>
+    <button class="nav-info-close" onclick="clearRoute()">✕</button>
+  </div>
+
   <!-- Ergebnis-Karte (bestehend) -->
   <div id="resultCard">
     <span class="result-icon" id="resultIcon">🅿️</span>
@@ -335,6 +384,9 @@ header{display:flex;align-items:center;justify-content:space-between;padding:10p
 
   <!-- NEU: Dichte-FAB -->
   <button id="dichteFab" onclick="toggleDichte()" title="Parkdichte-Analyse">📊</button>
+
+  <!-- NEU: Navigation FAB -->
+  <button id="navFab" onclick="toggleNavSearch()" title="Navigation">🧭</button>
 
   <!-- Details FAB -->
   <button id="detailsFab" onclick="openSheet('detailsSheet')">
@@ -500,8 +552,152 @@ function switchTiles(mode='voyager'){
 }
 
 // ════════════════════════════════════════════════
-// ZUSTANDS-VARIABLEN
+// NEU: NAVIGATION SYSTEM
+// Geocoding via OSM Nominatim + Routing via OSRM Public
 // ════════════════════════════════════════════════
+let navSearchVisible=false;
+let navSuggestTimer=null;
+let routeLayer=null;
+let navZielMarker=null;
+
+function toggleNavSearch(){
+  navSearchVisible=!navSearchVisible;
+  const bar=document.getElementById('navSearchBar');
+  const fab=document.getElementById('navFab');
+  bar.classList.toggle('visible',navSearchVisible);
+  fab.classList.toggle('active',navSearchVisible);
+  if(navSearchVisible){
+    setTimeout(()=>document.getElementById('navSearchInput').focus(),100);
+  }
+}
+
+function closeNavSearch(){
+  navSearchVisible=false;
+  document.getElementById('navSearchBar').classList.remove('visible');
+  document.getElementById('navFab').classList.remove('active');
+  document.getElementById('navSuggestions').innerHTML='';
+}
+
+// Adress-Vorschläge während des Tippens (debounced)
+function navSearchInput(query){
+  clearTimeout(navSuggestTimer);
+  if(query.trim().length<3){
+    document.getElementById('navSuggestions').innerHTML='';
+    return;
+  }
+  navSuggestTimer=setTimeout(()=>ladeAdressVorschlaege(query),400);
+}
+
+async function ladeAdressVorschlaege(query){
+  const suchanfrage=`${query}, Wien, Österreich`;
+  const url=`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(suchanfrage)}&limit=5&countrycodes=at`;
+  try{
+    const res=await fetchWithTimeout(url,8000);
+    const data=await res.json();
+    const box=document.getElementById('navSuggestions');
+    if(!data.length){box.innerHTML='<div class="nav-suggestion-item" style="color:var(--muted)">Keine Ergebnisse</div>';return;}
+    box.innerHTML=data.map(d=>{
+      const label=d.display_name.split(',').slice(0,3).join(',');
+      return `<div class="nav-suggestion-item" onclick='navWaehleZiel(${d.lat},${d.lon},"${label.replace(/"/g,'&quot;')}")'>📍 ${label}</div>`;
+    }).join('');
+  }catch(e){
+    console.warn('[Nominatim] Fehler:',e.message);
+  }
+}
+
+function navWaehleZiel(lat,lng,label){
+  document.getElementById('navSearchInput').value=label;
+  document.getElementById('navSuggestions').innerHTML='';
+  berechneRoute(lat,lng,label);
+}
+
+// Wenn Enter gedrückt wird ohne Vorschlag auszuwählen: erstes Ergebnis nehmen
+async function navSearchGo(){
+  const query=document.getElementById('navSearchInput').value.trim();
+  if(!query)return;
+  const suchanfrage=`${query}, Wien, Österreich`;
+  const url=`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(suchanfrage)}&limit=1&countrycodes=at`;
+  try{
+    showToast('🔍 Suche…','info');
+    const res=await fetchWithTimeout(url,8000);
+    const data=await res.json();
+    if(!data.length){showToast('Adresse nicht gefunden','error');return;}
+    const label=data[0].display_name.split(',').slice(0,3).join(',');
+    navWaehleZiel(data[0].lat,data[0].lon,label);
+  }catch(e){
+    showToast('Suche fehlgeschlagen','error');
+  }
+}
+
+async function berechneRoute(zielLat,zielLng,zielLabel){
+  zielLat=parseFloat(zielLat);
+  zielLng=parseFloat(zielLng);
+
+  if(lastLat===null||lastLng===null){
+    showToast('⚠️ Kein GPS-Standort – bitte zuerst GPS aktivieren','error');
+    return;
+  }
+
+  showToast('🧭 Route wird berechnet…','info');
+
+  // OSRM Public API – kostenlos, kein Account nötig
+  const url=`https://router.project-osrm.org/route/v1/driving/`
+    +`${lastLng},${lastLat};${zielLng},${zielLat}`
+    +`?overview=full&geometries=geojson&steps=false`;
+
+  try{
+    const res=await fetchWithTimeout(url,15000);
+    const data=await res.json();
+    if(data.code!=='Ok'||!data.routes||!data.routes.length){
+      showToast('Keine Route gefunden','error');
+      return;
+    }
+
+    const route=data.routes[0];
+    const coords=route.geometry.coordinates.map(([lng,lat])=>[lat,lng]);
+
+    // Alte Route entfernen
+    if(routeLayer)map.removeLayer(routeLayer);
+    if(navZielMarker)map.removeLayer(navZielMarker);
+
+    // Neue Route zeichnen
+    routeLayer=L.polyline(coords,{
+      color:'#4a9eff',weight:6,opacity:0.85,lineCap:'round',lineJoin:'round'
+    }).addTo(map);
+
+    // Ziel-Marker setzen
+    navZielMarker=L.marker([zielLat,zielLng],{
+      icon:L.divIcon({
+        html:'<div style="background:#4a9eff;width:28px;height:28px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(0,0,0,.4)"><span style="transform:rotate(45deg);font-size:14px">🏁</span></div>',
+        iconSize:[28,28],iconAnchor:[14,28],className:''
+      })
+    }).addTo(map);
+
+    map.fitBounds(routeLayer.getBounds(),{padding:[60,100]});
+
+    // Info anzeigen
+    const km=(route.distance/1000).toFixed(1);
+    const min=Math.round(route.duration/60);
+    document.getElementById('navInfoTitle').textContent=zielLabel||'Ziel';
+    document.getElementById('navInfoSub').textContent=`${km} km · ca. ${min} Min. mit dem Auto`;
+    document.getElementById('navInfoCard').classList.add('visible');
+
+    closeNavSearch();
+    showToast(`✅ Route: ${km} km, ${min} Min.`,'success');
+
+  }catch(e){
+    console.warn('[OSRM] Fehler:',e.message);
+    showToast('Route konnte nicht berechnet werden','error');
+  }
+}
+
+function clearRoute(){
+  if(routeLayer){map.removeLayer(routeLayer);routeLayer=null;}
+  if(navZielMarker){map.removeLayer(navZielMarker);navZielMarker=null;}
+  document.getElementById('navInfoCard').classList.remove('visible');
+}
+
+
 let map,userMarker,highlightLayer,zoneLayer,ladezonenLayer,anrainerLayer;
 let strassenLayer=null;           // NEU
 let selectedBezirk=null,activeSheet=null,swipeStartY=0;
