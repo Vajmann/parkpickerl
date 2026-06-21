@@ -96,6 +96,16 @@ header{display:flex;align-items:center;justify-content:space-between;padding:10p
 .nav-info-title{font-size:14px;font-weight:700;color:#fff}
 .nav-info-sub{font-size:11px;color:var(--muted);font-family:var(--font-m);margin-top:2px}
 .nav-info-close{background:rgba(255,255,255,.08);border:none;color:var(--muted);width:26px;height:26px;border-radius:50%;font-size:11px;cursor:pointer;flex-shrink:0}
+.nav-info-start{background:#3ddc84;border:none;color:#04342C;width:34px;height:34px;border-radius:50%;font-size:14px;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-weight:700}
+
+/* NEU: Live-Navigation Modus */
+#liveNavBar{position:absolute;top:8px;left:16px;right:16px;background:rgba(22,24,31,.95);backdrop-filter:blur(24px);border:1px solid rgba(61,220,132,.5);border-radius:16px;padding:14px 16px;z-index:470;display:none;align-items:center;gap:12px}
+#liveNavBar.visible{display:flex}
+.live-nav-dist{font-size:28px;font-weight:800;color:#3ddc84;flex-shrink:0}
+.live-nav-body{flex:1;min-width:0}
+.live-nav-label{font-size:11px;color:var(--muted);font-family:var(--font-m)}
+.live-nav-eta{font-size:13px;font-weight:700;color:#fff;margin-top:2px}
+.live-nav-stop{background:rgba(255,95,95,.15);border:1px solid rgba(255,95,95,.4);color:var(--red);width:42px;height:42px;border-radius:12px;font-size:18px;cursor:pointer;flex-shrink:0}
 
 /* NEU: Dichte-Panel */
 #dichtePanel{position:absolute;top:8px;left:16px;right:16px;background:rgba(22,24,31,.95);backdrop-filter:blur(24px);border:1px solid rgba(240,200,68,.3);border-radius:16px;padding:16px;z-index:450;display:none;max-height:70vh;overflow-y:auto}
@@ -264,6 +274,16 @@ header{display:flex;align-items:center;justify-content:space-between;padding:10p
     <div class="nav-suggestions" id="navSuggestions"></div>
   </div>
 
+  <!-- NEU: Live-Navigation Leiste -->
+  <div id="liveNavBar">
+    <span class="live-nav-dist" id="liveNavDist">—</span>
+    <div class="live-nav-body">
+      <div class="live-nav-label">verbleibend bis Ziel</div>
+      <div class="live-nav-eta" id="liveNavEta">—</div>
+    </div>
+    <button class="live-nav-stop" onclick="beendeNavigationModus()">✕</button>
+  </div>
+
   <!-- NEU: Navigation Info-Karte (Distanz/Zeit) -->
   <div id="navInfoCard">
     <span class="nav-info-icon">🧭</span>
@@ -271,6 +291,7 @@ header{display:flex;align-items:center;justify-content:space-between;padding:10p
       <div class="nav-info-title" id="navInfoTitle">Route berechnet</div>
       <div class="nav-info-sub" id="navInfoSub">—</div>
     </div>
+    <button class="nav-info-start" id="navStartBtn" onclick="starteNavigationModus()" title="Navigation starten">▶</button>
     <button class="nav-info-close" onclick="clearRoute()">✕</button>
   </div>
 
@@ -662,13 +683,13 @@ async function berechneRoute(zielLat,zielLng,zielLabel){
 
     // Neue Route zeichnen
     routeLayer=L.polyline(coords,{
-      color:'#4a9eff',weight:6,opacity:0.85,lineCap:'round',lineJoin:'round'
+      color:'#3ddc84',weight:6,opacity:0.85,lineCap:'round',lineJoin:'round'
     }).addTo(map);
 
     // Ziel-Marker setzen
     navZielMarker=L.marker([zielLat,zielLng],{
       icon:L.divIcon({
-        html:'<div style="background:#4a9eff;width:28px;height:28px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(0,0,0,.4)"><span style="transform:rotate(45deg);font-size:14px">🏁</span></div>',
+        html:'<div style="background:#3ddc84;width:28px;height:28px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(0,0,0,.4)"><span style="transform:rotate(45deg);font-size:14px">🏁</span></div>',
         iconSize:[28,28],iconAnchor:[14,28],className:''
       })
     }).addTo(map);
@@ -693,8 +714,103 @@ async function berechneRoute(zielLat,zielLng,zielLabel){
 
 function clearRoute(){
   if(routeLayer){map.removeLayer(routeLayer);routeLayer=null;}
+  if(routeLayerGefahren){map.removeLayer(routeLayerGefahren);routeLayerGefahren=null;}
   if(navZielMarker){map.removeLayer(navZielMarker);navZielMarker=null;}
   document.getElementById('navInfoCard').classList.remove('visible');
+  if(liveNavAktiv)beendeNavigationModus();
+}
+
+// ════════════════════════════════════════════════
+// NEU: LIVE-NAVIGATION MODUS (Route folgen wie bei Google Maps)
+// ════════════════════════════════════════════════
+let liveNavAktiv=false;
+let liveNavRouteCoords=[];        // alle Punkte der Route [[lat,lng],...]
+let routeLayerGefahren=null;      // graue Linie für bereits gefahrene Strecke
+let liveNavLetzteAusrichtung=0;
+
+function starteNavigationModus(){
+  if(!routeLayer){showToast('Keine Route vorhanden','error');return;}
+  liveNavAktiv=true;
+  liveNavRouteCoords=routeLayer.getLatLngs().map(p=>[p.lat,p.lng]);
+
+  document.getElementById('navInfoCard').classList.remove('visible');
+  document.getElementById('liveNavBar').classList.add('visible');
+
+  // Graue "gefahrene Strecke" Linie vorbereiten (anfangs leer)
+  if(routeLayerGefahren)map.removeLayer(routeLayerGefahren);
+  routeLayerGefahren=L.polyline([],{color:'#888',weight:6,opacity:0.5,lineCap:'round'}).addTo(map);
+
+  followMode=true;
+  showToast('🧭 Navigation gestartet','success');
+
+  // Sofort einmal aktualisieren falls Standort schon bekannt
+  if(lastLat!==null)updateLiveNavigation(lastLat,lastLng,null);
+}
+
+function beendeNavigationModus(){
+  liveNavAktiv=false;
+  document.getElementById('liveNavBar').classList.remove('visible');
+  if(routeLayerGefahren){map.removeLayer(routeLayerGefahren);routeLayerGefahren=null;}
+  // Karte normal ausrichten (keine Rotation mehr)
+  document.getElementById('map').style.transform='';
+  showToast('Navigation beendet','info');
+}
+
+// Findet den nächsten Punkt auf der Route zum aktuellen Standort
+function naechsterRoutenpunkt(lat,lng){
+  let minDist=Infinity,minIdx=0;
+  for(let i=0;i<liveNavRouteCoords.length;i++){
+    const[rLat,rLng]=liveNavRouteCoords[i];
+    const d=distanceM(lat,lng,rLat,rLng);
+    if(d<minDist){minDist=d;minIdx=i;}
+  }
+  return minIdx;
+}
+
+function updateLiveNavigation(lat,lng,heading){
+  if(!liveNavRouteCoords.length)return;
+
+  const idx=naechsterRoutenpunkt(lat,lng);
+
+  // Gefahrene Strecke (grau) = von Start bis aktueller Punkt
+  const gefahren=liveNavRouteCoords.slice(0,idx+1);
+  if(routeLayerGefahren)routeLayerGefahren.setLatLngs(gefahren);
+
+  // Verbleibende Strecke (grün) = von aktuellem Punkt bis Ziel
+  const verbleibend=liveNavRouteCoords.slice(idx);
+  if(routeLayer)routeLayer.setLatLngs(verbleibend);
+
+  // Verbleibende Distanz berechnen
+  let restDistanzM=0;
+  for(let i=idx;i<liveNavRouteCoords.length-1;i++){
+    const[lat1,lng1]=liveNavRouteCoords[i];
+    const[lat2,lng2]=liveNavRouteCoords[i+1];
+    restDistanzM+=distanceM(lat1,lng1,lat2,lng2);
+  }
+
+  const restKm=(restDistanzM/1000).toFixed(1);
+  const restMin=Math.max(1,Math.round(restDistanzM/1000/40*60)); // ~40km/h Annahme Stadt
+
+  document.getElementById('liveNavDist').textContent=restKm+' km';
+  document.getElementById('liveNavEta').textContent='ca. '+restMin+' Min. · Ankunft '+
+    new Date(Date.now()+restMin*60000).toLocaleTimeString('de-AT',{hour:'2-digit',minute:'2-digit'});
+
+  // Karte zentrieren + ggf. drehen in Fahrtrichtung
+  map.setView([lat,lng],17,{animate:true});
+
+  if(heading!==null&&heading!==undefined&&!isNaN(heading)){
+    liveNavLetzteAusrichtung=heading;
+    // Karten-Container drehen (Gegenrichtung damit Fahrtrichtung "oben" zeigt)
+    document.getElementById('map').style.transition='transform .3s ease';
+    document.getElementById('map').style.transform=`rotate(${-heading}deg)`;
+  }
+
+  // Ziel erreicht?
+  if(idx>=liveNavRouteCoords.length-3||restDistanzM<30){
+    showToast('🎉 Ziel erreicht!','success');
+    haptic('success');
+    beendeNavigationModus();
+  }
 }
 
 
@@ -1293,6 +1409,10 @@ function startTracking(){
     lastSpeed=speedKmh;
     if(speedKmh>15)lastHighSpeed=Date.now();
     if(speedKmh>25&&!carModeConfirmed){carModeConfirmed=true;showToast('🚗 Auto-Modus aktiv – ParkSense aktiviert','info');}
+
+    // NEU: Live-Navigation aktualisieren falls aktiv
+    if(liveNavAktiv)updateLiveNavigation(lat,lng,pos.coords.heading);
+
     const moved=lastLat===null||distanceM(lat,lng,lastLat,lastLng)>30;
     lastLat=lat;lastLng=lng;
     if(moved){
